@@ -257,7 +257,7 @@ public class MoveExecuter
     // Helper method to move a bit from one position to another in a bitboard
     private ulong MoveBit(ulong bitboard, int from, int to) => SetBit(ClearBit(bitboard, from), to);
 
-    public void UnmakeMove(Move move)
+    public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare)
     {
         int fromSquare = move.from;
         int toSquare = move.to;
@@ -274,23 +274,34 @@ public class MoveExecuter
         {
             case 1: // Castling
                 UnmakeCastling(fromSquare, toSquare, color);
-                return;
+                break;
 
             case 2: // Promotion
                 UnmakePromotion(fromSquare, toSquare, movedPiece, capturedPiece, promotionPiece);
-                return;
+                break;
 
             case 3: // En passant
                 UnmakeEnPassant(fromSquare, toSquare, movedPiece);
-                return;
+                break;
 
-            case 4: // Double pawn move
-                // Just a normal unmove, en passant square is restored by game state
+            default: // Normal move
+                UnmakeNormalMove(fromSquare, toSquare, movedPiece, capturedPiece);
                 break;
         }
 
-        // Normal move unmake
-        UnmakeNormalMove(fromSquare, toSquare, movedPiece, capturedPiece);
+        // Switch back turns and restore castling rights.
+        boardLogic.turn = (short)(1 - boardLogic.turn);
+        boardLogic.castlingRights = previousCastlingRights;
+        boardLogic.enPassantSquare = previousEnPassantSquare;
+
+        // Recalculate the pin and check maps, as well as the temporary castling rights.
+        // We update it for the opposite color to the one that we unmade the move for.
+        //UpdateCastlingRights(move, pieceType, color);
+
+        //boardLogic.UpdateAttacksMap(1 - color);
+        //boardLogic.FindPinsAndChecks(color);
+
+        //UpdateCastlingRights(move, pieceType, color);
     }
 
     private void UnmakeNormalMove(int fromSquare, int toSquare, int movedPiece, int capturedPiece)
@@ -326,9 +337,9 @@ public class MoveExecuter
         if (kingSide)
         {
             // Kingside castling
-            int rookFromSquare = (color == 0) ? 63 : 7;   // h1 or h8
-            int rookToSquare = (color == 0) ? 61 : 5;     // f1 or f8
-            int kingOriginal = (color == 0) ? 60 : 4;     // e1 or e8
+            int rookFromSquare = (color == 0) ? 7 : 63;   // h1 or h8
+            int rookToSquare = (color == 0) ? 5 : 61;     // f1 or f8
+            int kingOriginal = (color == 0) ? 4 : 60;     // e1 or e8
 
             // Move king back
             boardLogic.board[kingOriginal] = boardLogic.board[toSquare];
@@ -349,9 +360,9 @@ public class MoveExecuter
         else
         {
             // Queenside castling
-            int rookFromSquare = (color == 0) ? 56 : 0;   // a1 or a8
-            int rookToSquare = (color == 0) ? 59 : 3;     // d1 or d8
-            int kingOriginal = (color == 0) ? 60 : 4;     // e1 or e8
+            int rookFromSquare = (color == 0) ? 0 : 56;   // a1 or a8
+            int rookToSquare = (color == 0) ? 3 : 59;     // d1 or d8
+            int kingOriginal = (color == 0) ? 4 : 60;     // e1 or e8
 
             // Move king back
             boardLogic.board[kingOriginal] = boardLogic.board[toSquare];

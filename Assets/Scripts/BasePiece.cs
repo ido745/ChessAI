@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System;
 using UnityEditor.Rendering.LookDev;
+using System.Collections;
 
 public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
@@ -150,6 +151,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                         boardDrawer.MakeVisualMove(preSelectedMove, gameObject);
 
                         index = newIndex;
+                        CallAI();
                         return;
                     }
                     else
@@ -167,6 +169,8 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                 boardDrawer.MakeVisualMove(move, gameObject);
 
                 index = newIndex;
+
+                CallAI();
                 return;
             }
         }
@@ -178,6 +182,21 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         isDragged = false;
         preSelectedPromotionPiece = -1; // Reset pre-selection
         boardDrawer?.HideTargets();
+    }
+
+    public void CallAI()
+    {
+        // We need to wait one frame to let the UI clear.
+        StartCoroutine(CallAINextFrame());
+    }
+
+    private IEnumerator CallAINextFrame()
+    {
+        yield return null; // wait one frame, so UI updates finish
+        // Call the AI to make a move
+        GameObject AIobject = GameObject.Find("AI_manager");
+        AI ai = AIobject.GetComponent<AI>();
+        ai.StartThinking();
     }
 
     public void MakePromotion(int oldIndex, int promotionIndex, int oldType, int newType)

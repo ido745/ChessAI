@@ -39,8 +39,14 @@ public class GraphicalBoard : MonoBehaviour
         DrawBoardUI();
     }
 
-    public void MakeVisualMove(Move move, GameObject go)
+    public void MakeVisualMove(Move move, GameObject go = null)
     {
+        if (go == null)
+        {
+            // Default: game object of the piece that just moved.
+            go = boardPieces[move.from];
+        }
+
         boardPieces[move.from] = null;
         int color = Piece.IsBlack(move.movedPiece);
 
@@ -77,7 +83,7 @@ public class GraphicalBoard : MonoBehaviour
             rookGO.GetComponent<BasePiece>().index = rookTo;
         }
 
-        if (move.flag == 2)
+        else if (move.flag == 2)
         {
             // Promotion -- begin by destroying the pawn game object, and instantiating a promoted piece.
             Destroy(go);
@@ -108,7 +114,7 @@ public class GraphicalBoard : MonoBehaviour
             boardPieces[move.to] = instance;
         }
 
-        if (move.flag == 3)
+        else if (move.flag == 3)
         {
             // En passant
             int isBlack = Piece.IsBlack(move.movedPiece);
@@ -119,6 +125,14 @@ public class GraphicalBoard : MonoBehaviour
             if (isBlack == 0)
                 boardPieces[move.to - 8].SetActive(false);
                 boardPieces[move.to - 8] = null;
+        }
+        if (move.flag == 0 || move.flag == 1 || move.flag == 4)
+        {
+            Vector2 newPos = new Vector2((move.to % 8 - 4) * tileSize.x, (move.to / 8 - 3.5f) * tileSize.y);
+
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.anchoredPosition = newPos;
+            go.GetComponent<BasePiece>().index = move.to;
         }
     }
 
@@ -338,9 +352,25 @@ public class GraphicalBoard : MonoBehaviour
 
         boardManager.MakeMove(move);
         MakeVisualMove(move, pieceGO);
+
+        // Call the ai now that we're done.
+        CallAI();
     }
 
-    
+    public void CallAI()
+    {
+        // We need to wait one frame to let the UI clear.
+        StartCoroutine(CallAINextFrame());
+    }
+
+    private IEnumerator CallAINextFrame()
+    {
+        yield return null; // wait one frame, so UI updates finish
+        // Call the AI to make a move
+        GameObject AIobject = GameObject.Find("AI_manager");
+        AI ai = AIobject.GetComponent<AI>();
+        ai.StartThinking();
+    }
 
     public void DebugHideSquares()
     {

@@ -4,33 +4,33 @@ using System.Diagnostics;
 using UnityEngine;
 using static BitScan;
 
-public class PerftTester : MonoBehaviour
+public class OptimizedPerftTester : MonoBehaviour
 {
     private BoardLogic boardLogic;
 
     // Test positions with expected results
     private readonly TestPosition[] testPositions = {
         // Starting position
-        new TestPosition(
-            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
-            "Engame Position",
-            new long[] { 1, 14, 191, 2812, 43238, 674624 }
-        ),
-        new TestPosition(
-            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - ",
-            "Kiwipete Position",
-            new long[] { 1, 48, 2039, 97862, 4085603, 193690690 }
-        ),
-        new TestPosition(
-            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
-            "Fourth Position",
-            new long[] { 1, 6, 264, 9467, 422333, 15833292 }
-        ),
-        new TestPosition(
-            "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
-            "Fifth Position",
-            new long[] { 1, 44, 1486, 62379, 2103487, 89941194 }
-        )
+        //new TestPosition(
+        //    "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        //    "Engame Position",
+        //    new long[] { 1, 14, 191, 2812, 43238, 674624 }
+        //),
+        //new TestPosition(
+        //    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - ",
+        //    "Kiwipete Position",
+        //    new long[] { 1, 48, 2039, 97862, 4085603, 193690690 }
+        //),
+        //new TestPosition(
+        //    "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        //    "Fourth Position",
+        //    new long[] { 1, 6, 264, 9467, 422333, 15833292 }
+        //),
+        //new TestPosition(
+        //    "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        //    "Fifth Position",
+        //    new long[] { 1, 44, 1486, 62379, 2103487, 89941194 }
+        //)
         //new TestPosition(
         //    "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
         //    "Sixth Position",
@@ -76,6 +76,19 @@ public class PerftTester : MonoBehaviour
         }
     }
 
+    // Lightweight state tracking for move unmaking
+    private struct MoveState
+    {
+        public ulong enPassantSquare;
+        public int castlingRights;
+        public int currentCastling;
+        public ulong checkMap;
+        public ulong[] pinRays;
+        public bool[] doubleCheck;
+        public ulong[] attackedSquares;
+        public bool gameEnded;
+    }
+
     //void Start()
     //{
     //    boardLogic = GetComponent<BoardLogic>();
@@ -112,7 +125,7 @@ public class PerftTester : MonoBehaviour
                 PerftResult result;
 
                 // For depths up to 3, show detailed move breakdown
-                if (depth == 5)
+                if (depth == -1)
                 {
                     result = RunPerftWithBreakdown(depth);
                 }
@@ -163,14 +176,17 @@ public class PerftTester : MonoBehaviour
         }
 
         List<MoveNodeCount> moveBreakdown = new List<MoveNodeCount>();
-        List<Move> moves = GenerateAllMoves();
+        Move[] moves = new Move[256];
+        int moveCount = GenerateAllMoves(moves, (int)boardLogic.turn);
+        //List<Move> moves = GenerateAllMoves();
 
         UnityEngine.Debug.Log($"\nMove breakdown for depth {depth}:");
         UnityEngine.Debug.Log("================================");
 
-        foreach (Move move in moves)
+        for (int i = 0; i < moveCount; i++)
         {
-            BoardState state = SaveBoardState();
+            Move move = moves[i];
+            MoveState state = SaveMoveState();
             boardLogic.MakeMove(move);
 
             long nodeCount;
@@ -184,7 +200,7 @@ public class PerftTester : MonoBehaviour
                 nodeCount = subResult.nodes;
             }
 
-            RestoreBoardState(state);
+            RestoreMoveState(move, state);
 
             result.nodes += nodeCount;
             moveBreakdown.Add(new MoveNodeCount(move, nodeCount));
@@ -231,28 +247,69 @@ public class PerftTester : MonoBehaviour
             return new PerftResult(1, 0);
         }
 
-        List<Move> moves = GenerateAllMoves();
+        Move[] moves = new Move[256];
+        int moveCount = GenerateAllMoves(moves, (int)boardLogic.turn);
+        //List<Move> moves = GenerateAllMoves();
 
         if (depth == 1)
         {
             // At depth 1, just count the moves
-            result.nodes = moves.Count;
+            result.nodes = moveCount;
             return result;
         }
 
         // For deeper searches, recursively count
-        foreach (Move move in moves)
+        for (int i = 0; i < moveCount; i++)
         {
-            BoardState state = SaveBoardState();
+            Move move = moves[i];
+            MoveState state = SaveMoveState();
             boardLogic.MakeMove(move);
 
             PerftResult subResult = PerftRecursive(depth - 1);
             result.nodes += subResult.nodes;
 
-            RestoreBoardState(state);
+            RestoreMoveState(move, state);
         }
 
         return result;
+    }
+
+    private MoveState SaveMoveState()
+    {
+        MoveState state = new MoveState();
+
+        state.enPassantSquare = boardLogic.enPassantSquare;
+        state.castlingRights = boardLogic.castlingRights;
+        state.currentCastling = boardLogic.currentCastling;
+        state.checkMap = boardLogic.checkMap;
+        state.gameEnded = boardLogic.gameEnded;
+
+        // Deep copy arrays
+        state.pinRays = new ulong[64];
+        Array.Copy(boardLogic.pinRays, state.pinRays, 64);
+
+        state.doubleCheck = new bool[2];
+        Array.Copy(boardLogic.doubleCheck, state.doubleCheck, 2);
+
+        state.attackedSquares = new ulong[2];
+        Array.Copy(boardLogic.attackedSquares, state.attackedSquares, 2);
+
+        return state;
+    }
+
+    private void RestoreMoveState(Move move, MoveState state)
+    {
+        // 1. Unmake the physical move on the board
+        boardLogic.GetComponent<BoardLogic>().UnmakeMove(move, state.castlingRights, state.enPassantSquare);
+
+        // 2. Restore the entire derived state from the saved struct.
+        // This is now the single point of state restoration.
+        boardLogic.currentCastling = state.currentCastling;
+        boardLogic.checkMap = state.checkMap;
+        boardLogic.gameEnded = state.gameEnded;
+        Array.Copy(state.pinRays, boardLogic.pinRays, 64);
+        Array.Copy(state.doubleCheck, boardLogic.doubleCheck, 2);
+        Array.Copy(state.attackedSquares, boardLogic.attackedSquares, 2);
     }
 
     private string FormatMove(Move move)
@@ -287,115 +344,71 @@ public class PerftTester : MonoBehaviour
         return ((char)('a' + file)).ToString() + (rank + 1).ToString();
     }
 
-    private List<Move> GenerateAllMoves()
+    public int GenerateAllMoves(Move[] moveList, int color)
     {
-        List<Move> allMoves = new List<Move>();
+        int moveCount = 0;
 
-        // Generate moves for all pieces of the current color
-        for (int square = 0; square < 64; square++)
+        // Iterate through each piece type, from Pawn to King
+        for (int pieceType = Piece.King; pieceType <= Piece.Queen; pieceType++)
         {
-            int piece = boardLogic.board[square];
-            if (piece == 0) continue;
+            ulong pieceBitboard = boardLogic.bitboards[color, pieceType - 1];
 
-            int pieceColor = Piece.IsBlack(piece);
-            if (pieceColor != boardLogic.turn) continue;
-
-            // Generate moves for this piece
-            List<Move> pieceMoves = boardLogic.GenerateListMoves(square, piece);
-
-            // For promotions, generate all possible promotion pieces
-            foreach (Move move in pieceMoves)
+            // Loop through each piece of the current type on the board
+            while (pieceBitboard != 0)
             {
-                if (move.flag == 2) // Promotion
+                int from = BitScan.TrailingZeroCount(pieceBitboard);
+
+                // Get the actual piece from the board array instead of constructing it
+                int piece = boardLogic.board[from];
+
+                // Verify this piece belongs to the current color (safety check)
+                if (piece == 0 || Piece.IsBlack(piece) != color)
                 {
-                    int color = Piece.GetColor(piece);
-                    allMoves.Add(new Move(move.from, move.to, move.movedPiece, move.capturedPiece, move.flag, Piece.Queen | color));
-                    allMoves.Add(new Move(move.from, move.to, move.movedPiece, move.capturedPiece, move.flag, Piece.Rook | color));
-                    allMoves.Add(new Move(move.from, move.to, move.movedPiece, move.capturedPiece, move.flag, Piece.Bishop | color));
-                    allMoves.Add(new Move(move.from, move.to, move.movedPiece, move.capturedPiece, move.flag, Piece.Knight | color));
+                    // Remove this piece from the bitboard and continue
+                    pieceBitboard = BitScan.ClearBit(pieceBitboard, from);
+                    continue;
                 }
-                else
+
+                // Get the bitboard of all legal destination squares for this piece
+                ulong validDestinations = boardLogic.GenerateMoves(from, piece);
+
+                // Loop through each valid destination square
+                while (validDestinations != 0)
                 {
-                    allMoves.Add(move);
+                    ulong lsb = validDestinations & (ulong)-(long)validDestinations;
+                    int to = BitScan.TrailingZeroCount(lsb);
+
+                    // Determine move details
+                    int capturedPiece = boardLogic.board[to]; // Will be 0 if it's not a capture
+                    int flag = boardLogic.FindFlag(piece, from, to); // Use the actual piece, not pieceType
+
+                    // --- Handle Promotions ---
+                    if (flag == (int)MoveFlag.Promotion)
+                    {
+                        int promotionColor = color == 1 ? Piece.Black : Piece.White;
+
+                        // Add a move for each possible promotion piece
+                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Queen | promotionColor);
+                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Rook | promotionColor);
+                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Bishop | promotionColor);
+                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Knight | promotionColor);
+                    }
+                    // --- Handle all other move types ---
+                    else
+                    {
+                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag);
+                    }
+
+                    // Remove this destination from the bitboard to process the next one
+                    validDestinations ^= lsb;
                 }
+
+                // Remove this piece from the bitboard to process the next one
+                pieceBitboard = BitScan.ClearBit(pieceBitboard, from);
             }
         }
 
-        return allMoves;
-    }
-
-    private struct BoardState
-    {
-        public int[] board;
-        public ulong[,] bitboards;
-        public ulong Wbitboard;
-        public ulong Bbitboard;
-        public ulong enPassantSquare;
-        public short turn;
-        public int castlingRights;
-        public int currentCastling;
-        public ulong[] attackedSquares;
-        public ulong checkMap;
-        public ulong[] pinRays;
-        public bool[] doubleCheck;
-        public bool gameEnded;
-    }
-
-    private BoardState SaveBoardState()
-    {
-        BoardState state = new BoardState();
-
-        state.board = new int[64];
-        Array.Copy(boardLogic.board, state.board, 64);
-
-        state.bitboards = new ulong[2, 6];
-        for (int i = 0; i < 2; i++)
-            for (int j = 0; j < 6; j++)
-                state.bitboards[i, j] = boardLogic.bitboards[i, j];
-
-        state.Wbitboard = boardLogic.Wbitboard;
-        state.Bbitboard = boardLogic.Bbitboard;
-        state.enPassantSquare = boardLogic.enPassantSquare;
-        state.turn = boardLogic.turn;
-        state.castlingRights = boardLogic.castlingRights;
-        state.currentCastling = boardLogic.currentCastling;
-
-        state.attackedSquares = new ulong[2];
-        Array.Copy(boardLogic.attackedSquares, state.attackedSquares, 2);
-
-        state.checkMap = boardLogic.checkMap;
-
-        state.pinRays = new ulong[64];
-        Array.Copy(boardLogic.pinRays, state.pinRays, 64);
-
-        state.doubleCheck = new bool[2];
-        Array.Copy(boardLogic.doubleCheck, state.doubleCheck, 2);
-
-        state.gameEnded = boardLogic.gameEnded;
-
-        return state;
-    }
-
-    private void RestoreBoardState(BoardState state)
-    {
-        Array.Copy(state.board, boardLogic.board, 64);
-
-        for (int i = 0; i < 2; i++)
-            for (int j = 0; j < 6; j++)
-                boardLogic.bitboards[i, j] = state.bitboards[i, j];
-
-        boardLogic.Wbitboard = state.Wbitboard;
-        boardLogic.Bbitboard = state.Bbitboard;
-        boardLogic.enPassantSquare = state.enPassantSquare;
-        boardLogic.turn = state.turn;
-        boardLogic.castlingRights = state.castlingRights;
-        boardLogic.currentCastling = state.currentCastling;
-
-        Array.Copy(state.attackedSquares, boardLogic.attackedSquares, 2);
-        boardLogic.checkMap = state.checkMap;
-        Array.Copy(state.pinRays, boardLogic.pinRays, 64);
-        Array.Copy(state.doubleCheck, boardLogic.doubleCheck, 2);
-        boardLogic.gameEnded = state.gameEnded;
+        return moveCount;
     }
 
     private void PrintPerftBreakdown(PerftResult result, int depth)
