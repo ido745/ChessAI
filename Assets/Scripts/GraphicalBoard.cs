@@ -39,7 +39,7 @@ public class GraphicalBoard : MonoBehaviour
         DrawBoardUI();
     }
 
-    public void MakeVisualMove(Move move, GameObject go = null)
+    public void MakeVisualMove(Move move, GameObject go = null, bool animation = true)
     {
         if (go == null)
         {
@@ -79,7 +79,11 @@ public class GraphicalBoard : MonoBehaviour
             int y = rookTo / 8;
             Vector2 anchoredPos = new Vector2((x - 4) * tileSize.x, (y - 3.5f) * tileSize.y);
             RectTransform rect = rookGO.GetComponent<RectTransform>();
-            rect.anchoredPosition = anchoredPos;
+
+            if(animation)
+                StartCoroutine(SmoothMove(rookGO, anchoredPos, 0.1f));
+            else
+                rect.anchoredPosition = anchoredPos;
             rookGO.GetComponent<BasePiece>().index = rookTo;
         }
 
@@ -126,14 +130,39 @@ public class GraphicalBoard : MonoBehaviour
                 boardPieces[move.to - 8].SetActive(false);
                 boardPieces[move.to - 8] = null;
         }
-        if (move.flag == 0 || move.flag == 1 || move.flag == 4)
+        if (move.flag != 2)
         {
             Vector2 newPos = new Vector2((move.to % 8 - 4) * tileSize.x, (move.to / 8 - 3.5f) * tileSize.y);
 
             RectTransform rect = go.GetComponent<RectTransform>();
-            rect.anchoredPosition = newPos;
+
+            if (animation)
+                StartCoroutine(SmoothMove(go, newPos, 0.1f));
+            else
+                rect.anchoredPosition = newPos;
             go.GetComponent<BasePiece>().index = move.to;
         }
+    }
+
+    private IEnumerator SmoothMove(GameObject piece, Vector2 targetPos, float duration)
+    {
+        RectTransform rect = piece.GetComponent<RectTransform>();
+        Vector2 startPos = rect.anchoredPosition;
+
+        // Wait two frames to ensure smooth start
+        yield return null;
+        yield return null;
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            rect.anchoredPosition = Vector2.Lerp(startPos, targetPos, t);
+            yield return null;
+        }
+
+        rect.anchoredPosition = targetPos; // Snap to final position
     }
 
     void DrawBoardUI()

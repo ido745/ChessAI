@@ -166,7 +166,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                 
 
                 boardManager.MakeMove(move);
-                boardDrawer.MakeVisualMove(move, gameObject);
+                boardDrawer.MakeVisualMove(move, gameObject, false);
 
                 index = newIndex;
 

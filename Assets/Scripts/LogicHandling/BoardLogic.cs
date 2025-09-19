@@ -47,7 +47,9 @@ public class BoardLogic : MonoBehaviour
     // 1 - King, 2 - pawn, 3 - knight, 4 - bishop, 5 - rook, 6 - queen.
 
     string FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    //string FEN = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10";
+    //string FEN = "r3kb1r/pppnn1pp/8/8/4N3/5Q2/P2R1KPq/2R5 w kq - ";
+    public ulong zobristKey;
+
     public short turn = 0;     // 0 - white, 1 - black.
 
     public int castlingRights = 15; // 15 = 1111  - all sides can castle.
@@ -66,6 +68,8 @@ public class BoardLogic : MonoBehaviour
     // Helper classes
     private MoveExecuter moveExecuter;
     private AttackCalculator attackCalculator;
+    private MoveCalculator moveCalculator;
+    private MoveToNotationConverter moveToNotationConverter;
     GameObject boardDrawer;
 
     public bool gameEnded;
@@ -79,6 +83,8 @@ public class BoardLogic : MonoBehaviour
         // Initialize helper classes
         moveExecuter = new MoveExecuter(this);
         attackCalculator = new AttackCalculator(this);
+        moveCalculator = new MoveCalculator(this);
+        moveToNotationConverter = new MoveToNotationConverter(this);
 
         // Set the pieces on the board
         ParseFEN(FEN);
@@ -88,415 +94,6 @@ public class BoardLogic : MonoBehaviour
         attackCalculator.UpdateAttacksMap(0);
         attackCalculator.UpdateAttacksMap(1);
     }
-
-    public ulong GenerateMoves(int pos, int piece, bool ignoreOtherKing = false)
-    {
-        if (pos < 0 || pos >= 64) return 0UL;
-        if (piece == 0) return 0UL;
-
-        int color = Piece.IsBlack(piece);
-        int type = Piece.GetPieceType(piece);
-        ulong allOccupancy = Wbitboard | Bbitboard;
-        ulong friendly = (color == 0) ? Wbitboard : Bbitboard;
-        ulong attacks = 0UL;
-
-        if (ignoreOtherKing) { allOccupancy &= (~bitboards[1 - color, Piece.King - 1]); }
-
-        // If we're in double check, only the king can move
-        if (doubleCheck[color] && type != Piece.King)
-            return 0UL;
-
-        switch (type)
-        {
-            // Sliding pieces
-            case Piece.Rook:
-                attacks = Magic.GetRookAttacks(pos, allOccupancy);
-                break;
-            case Piece.Bishop:
-                attacks = Magic.GetBishopAttacks(pos, allOccupancy);
-                break;
-            case Piece.Queen:
-                attacks = Magic.GetRookAttacks(pos, allOccupancy)
-                        | Magic.GetBishopAttacks(pos, allOccupancy);
-                break;
-            // Other regular pieces
-            case Piece.Knight:
-                attacks = Magic.GetKnightAttacks(pos);
-                break;
-            case Piece.King:
-                bool kingSideCastle = ((0b0010 << (2 * color)) & currentCastling) != 0;
-                bool queenSideCastle = ((0b0001 << (2 * color)) & currentCastling) != 0;
-                attacks = Magic.GetKingAttacks(pos, kingSideCastle, queenSideCastle);
-                break;
-            case Piece.Pawn:
-                attacks = Magic.GetPawnAttacks(pos, friendly, allOccupancy & (~friendly), color, enPassantSquare);
-                break;
-            default:
-                return 0;  // Use separate logic for non-sliders
-        }
-
-        // Filter out moves to your own pieces, then add them
-        if (ignoreOtherKing)
-            return attacks;
-        ulong valid = attacks & ~friendly;
-
-        // Not only Pseudo moves, but we need to find out what we can actually do.
-        if (type == Piece.King)
-        {
-            valid &= ~attackedSquares[1 - color];
-            return valid;
-        }
-
-        // Add the pin mask
-        if (pinRays[pos] != 0UL)
-            valid &= pinRays[pos];
-
-        if (checkMap != 0UL)
-        {
-            // We are in check. We must protect the king.
-            if (type == Piece.Pawn && (checkMap & Bbitboard) == (checkMap & bitboards[1 - color, Piece.Pawn - 1]))
-                // If the check was given by double push, we can en passant to capture the pawn.
-                valid &= (checkMap | enPassantSquare);
-            else
-                valid &= checkMap;
-        }
-        
-        return valid;
-    }
-
-    public int FindFlag(int pieceType, int from, int to)
-    {
-        pieceType = Piece.GetPieceType(pieceType);
-        // Castling check
-        if (pieceType == Piece.King && Math.Abs(to - from) == 2)
-            return 1; // Castling
-
-        if (pieceType == Piece.Pawn)
-        {
-            // Promotion check
-            if ((to >= 56 && to <= 63) || (to >= 0 && to <= 7))
-                return 2; // Promotion
-
-            // En passant capture check
-            if ((enPassantSquare & (1UL << to)) != 0 && enPassantSquare != 0)
-            {
-                return 3; // En passant
-            }
-
-            // Double pawn move check
-            if (Math.Abs(to - from) == 16)
-            {
-                return 4; // Double pawn move
-            }
-        }
-
-        return 0; // Normal move
-    }
-
-    public List<Move> GenerateListMoves(int pos, int piece)
-    {
-        List<Move> moves = new List<Move>();
-        int type = Piece.GetPieceType(piece);
-        ulong valid = GenerateMoves(pos, piece);
-
-        while (valid != 0)
-        {
-            ulong lsb = valid & (ulong)-(long)valid;
-            int to = BitScan.TrailingZeroCount(lsb);
-            valid ^= lsb;
-
-            int flag = FindFlag(type, pos, to);
-            moves.Add(new Move(pos, to, piece, board[to], flag)); // Use 'piece', not 'type'
-        }
-
-        return moves;
-    }
-
-    public int GenerateAllMoves(Move[] moveList, int color)
-    {
-        int moveCount = 0;
-
-        // Iterate through each piece type, from Pawn to King
-        for (int pieceType = Piece.King; pieceType <= Piece.Queen; pieceType++)
-        {
-            ulong pieceBitboard = bitboards[color, pieceType - 1];
-
-            // Loop through each piece of the current type on the board
-            while (pieceBitboard != 0)
-            {
-                int from = BitScan.TrailingZeroCount(pieceBitboard);
-
-                // Get the actual piece from the board array instead of constructing it
-                int piece = board[from];
-
-                // Verify this piece belongs to the current color (safety check)
-                if (piece == 0 || Piece.IsBlack(piece) != color)
-                {
-                    // Remove this piece from the bitboard and continue
-                    pieceBitboard = BitScan.ClearBit(pieceBitboard, from);
-                    continue;
-                }
-
-                // Get the bitboard of all legal destination squares for this piece
-                ulong validDestinations = GenerateMoves(from, piece);
-
-                // Loop through each valid destination square
-                while (validDestinations != 0)
-                {
-                    ulong lsb = validDestinations & (ulong)-(long)validDestinations;
-                    int to = BitScan.TrailingZeroCount(lsb);
-
-                    // Determine move details
-                    int capturedPiece = board[to]; // Will be 0 if it's not a capture
-                    int flag = FindFlag(piece, from, to); // Use the actual piece, not pieceType
-
-                    // --- Handle Promotions ---
-                    if (flag == (int)MoveFlag.Promotion)
-                    {
-                        int promotionColor = color == 1 ? Piece.Black : Piece.White;
-
-                        // Add a move for each possible promotion piece
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Queen | promotionColor);
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Rook | promotionColor);
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Bishop | promotionColor);
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Knight | promotionColor);
-                    }
-                    // --- Handle all other move types ---
-                    else
-                    {
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag);
-                    }
-
-                    // Remove this destination from the bitboard to process the next one
-                    validDestinations ^= lsb;
-                }
-
-                // Remove this piece from the bitboard to process the next one
-                pieceBitboard = BitScan.ClearBit(pieceBitboard, from);
-            }
-        }
-
-        return moveCount;
-    }
-
-    public int GenerateAllCaptures(Move[] moveList, int color)
-    {
-        int moveCount = 0;
-
-        // Iterate through each piece type, from Pawn to King
-        for (int pieceType = Piece.King; pieceType <= Piece.Queen; pieceType++)
-        {
-            ulong pieceBitboard = bitboards[color, pieceType - 1];
-
-            // Loop through each piece of the current type on the board
-            while (pieceBitboard != 0)
-            {
-                int from = BitScan.TrailingZeroCount(pieceBitboard);
-
-                // Get the actual piece from the board array instead of constructing it
-                int piece = board[from];
-
-                // Verify this piece belongs to the current color (safety check)
-                if (piece == 0 || Piece.IsBlack(piece) != color)
-                {
-                    // Remove this piece from the bitboard and continue
-                    pieceBitboard = BitScan.ClearBit(pieceBitboard, from);
-                    continue;
-                }
-
-                // Get the bitboard of all legal destination squares for this piece
-                ulong validDestinations = GenerateMoves(from, piece);
-
-                // Loop through each valid destination square
-                while (validDestinations != 0)
-                {
-                    ulong lsb = validDestinations & (ulong)-(long)validDestinations;
-                    int to = BitScan.TrailingZeroCount(lsb);
-
-                    // Determine move details
-                    int capturedPiece = board[to]; // Will be 0 if it's not a capture
-                    if (capturedPiece == 0)
-                    {
-                        validDestinations ^= lsb;
-                        continue;
-                    }
-
-                    int flag = FindFlag(piece, from, to); // Use the actual piece, not pieceType
-
-                    // --- Handle Promotions ---
-                    if (flag == (int)MoveFlag.Promotion)
-                    {
-                        int promotionColor = color == 1 ? Piece.Black : Piece.White;
-
-                        // Add a move for each possible promotion piece
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Queen | promotionColor);
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Rook | promotionColor);
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Bishop | promotionColor);
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Knight | promotionColor);
-                    }
-                    // --- Handle all other move types ---
-                    else
-                    {
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag);
-                    }
-
-                    // Remove this destination from the bitboard to process the next one
-                    validDestinations ^= lsb;
-                }
-
-                // Remove this piece from the bitboard to process the next one
-                pieceBitboard = BitScan.ClearBit(pieceBitboard, from);
-            }
-        }
-
-        return moveCount;
-    }
-
-    public void MakeMove(Move move)
-    {
-        moveExecuter.MakeMove(move);
-
-        string notation = MoveToNotation(move);
-
-        // Add move number for White
-        if (turn == 1) // White made a move
-        {
-            int moveNumber = (openingHistory.Count / 2) + 1;
-            notation = moveNumber + ". " + notation;
-        }
-
-        openingLine += notation + " ";
-        openingHistory.Push(notation);
-    }
-
-    public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare)
-    {
-        moveExecuter.UnmakeMove(move, previousCastlingRights, previousEnPassantSquare);
-
-        if (openingHistory.Count > 0)
-        {
-            string last = openingHistory.Pop();
-
-            // Remove the last added notation from the string
-            if (openingLine.EndsWith(last + " "))
-            {
-                openingLine = openingLine.Substring(0, openingLine.Length - (last.Length + 1));
-            }
-        }
-    }
-
-
-    public void FindPinsAndChecks(int color)
-    {
-        attackCalculator.FindPinsAndChecks(color);
-    }
-
-    public void UpdateAttacksMap(int color)
-    {
-        attackCalculator.UpdateAttacksMap(color);
-    }
-
-    public bool IsInCheck()
-    {
-        // Checks if the player who's turn it is to play is in check
-        return (checkMap != 0UL);
-    }
-
-    public void UpdateCastlingRights()
-    {
-        if ((bitboards[0, Piece.King - 1] & 0x0000000000000010) == 0)
-        {
-            // King is not in place -- no castling.
-            castlingRights &= 0b1100;
-        }
-        if ((bitboards[1, Piece.King - 1] & 0x1000000000000000) == 0)
-        {
-            // King is not in place -- no castling.
-            castlingRights &= 0b0011;
-        }
-
-        if ((bitboards[1, Piece.Rook - 1] & 0x8000000000000000) == 0)
-        {
-            // No king side castling for black
-            castlingRights &= ~0b1000;
-        }
-        if ((bitboards[1, Piece.Rook - 1] & 0x0100000000000000) == 0)
-        {
-            // No queen side castling for black
-            castlingRights &= ~0b0100;
-        }
-
-        if ((bitboards[0, Piece.Rook - 1] & 0x0000000000000080) == 0)
-        {
-            // No king side castling for white
-            castlingRights &= ~0b0010;
-        }
-        if ((bitboards[0, Piece.Rook - 1] & 0x0000000000000001) == 0)
-        {
-            // No queen side castling for white
-            castlingRights &= ~0b0001;
-        }
-    }
-
-    public void DebugShowSquares(ulong squares, Color squareColor) => boardDrawer.GetComponent<GraphicalBoard>().DebugShowSquares(squares, squareColor);
-
-    private string MoveToNotation(Move move)
-    {
-        int fromFile = move.from % 8;
-        int fromRank = move.from / 8;
-        int toFile = move.to % 8;
-        int toRank = move.to / 8;
-
-        string files = "abcdefgh";
-        string pieceChar = "";
-
-        int pieceType = Piece.GetPieceType(move.movedPiece);
-
-        switch (pieceType)
-        {
-            case Piece.Pawn:
-                pieceChar = "";
-                break;
-            case Piece.Knight:
-                pieceChar = "N";
-                break;
-            case Piece.Bishop:
-                pieceChar = "B";
-                break;
-            case Piece.Rook:
-                pieceChar = "R";
-                break;
-            case Piece.Queen:
-                pieceChar = "Q";
-                break;
-            case Piece.King:
-                pieceChar = "K";
-                break;
-        }
-
-        // Castling
-        if (move.flag == (int)MoveFlag.Castling)
-        {
-            if (toFile == 6) return "O-O";     // King-side
-            if (toFile == 2) return "O-O-O";   // Queen-side
-        }
-
-        // Pawn captures
-        if (pieceType == Piece.Pawn && move.capturedPiece != 0)
-        {
-            return $"{files[fromFile]}x{files[toFile]}{toRank + 1}";
-        }
-
-        // Normal capture
-        if (move.capturedPiece != 0)
-        {
-            return $"{pieceChar}x{files[toFile]}{toRank + 1}";
-        }
-
-        // Normal move
-        return $"{pieceChar}{files[toFile]}{toRank + 1}";
-    }
-
 
     public void ParseFEN(string fen)
     {
@@ -573,92 +170,166 @@ public class BoardLogic : MonoBehaviour
             enPassantSquare = 1UL << epSquareIndex;
         }
 
-        // IMPORTANT: Do NOT call UpdateCastlingRights() here anymore, 
-        // as we have already set the rights directly from the FEN string.
+        zobristKey = GetZobristKey();
+    }
+
+    public ulong GetZobristKey()
+    {
+        zobristKey = 0UL;
+
+        // Hash pieces
+        for (int i = 0; i < 64; i++)
+        {
+            if (board[i] != 0) // Only hash non-empty squares
+            {
+                int pieceType = Piece.GetPieceType(board[i]);
+                int color = Piece.IsBlack(board[i]);
+
+                zobristKey ^= Zobrist.pieceKeys[color, pieceType - 1, i];
+            }
+        }
+
+        // Hash castling rights
+        zobristKey ^= Zobrist.castlingKeys[currentCastling]; // current castling rights?
+
+        // Hash en passant square
+        if (enPassantSquare != 0UL)
+        {
+            int file = BitScan.TrailingZeroCount(enPassantSquare) % 8;
+            zobristKey ^= Zobrist.enPassantFileKey[file];
+        }
+
+        // Hash side to move
+        if (turn == 1)
+        {
+            zobristKey ^= Zobrist.blackToMoveKey;
+        }
+
+        return zobristKey;
+    }
+
+    public ulong GenerateMoves(int pos, int piece, bool ignoreOtherKing = false)
+    {
+        
+        return moveCalculator.GenerateMoves(pos, piece, ignoreOtherKing);
+    }
+
+    public int FindFlag(int pieceType, int from, int to)
+    {
+        return moveCalculator.FindFlag(pieceType, from, to);
+    }
+
+    public List<Move> GenerateListMoves(int pos, int piece)
+    {
+        return moveCalculator.GenerateListMoves(pos, piece);
+    }
+
+    public int GenerateAllMoves(Move[] moveList, int color)
+    {
+        return moveCalculator.GenerateAllMoves(moveList, color);
+    }
+
+    public int GenerateAllCaptures(Move[] moveList, int color)
+    {
+        return moveCalculator.GenerateAllCaptures(moveList, color);
+    }
+
+    public void MakeMove(Move move)
+    {
+        moveExecuter.MakeMove(move);
+
+
+        string notation = MoveToNotation(move);
+
+        // Add move number for White
+        if (turn == 1) // White made a move
+        {
+            int moveNumber = (openingHistory.Count / 2) + 1;
+            notation = moveNumber + ". " + notation;
+        }
+
+        openingLine += notation + " ";
+        openingHistory.Push(notation);
+    }
+
+    public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare)
+    {
+        moveExecuter.UnmakeMove(move, previousCastlingRights, previousEnPassantSquare);
+
+
+        if (openingHistory.Count > 0)
+        {
+            string last = openingHistory.Pop();
+
+            // Remove the last added notation from the string
+            if (openingLine.EndsWith(last + " "))
+            {
+                openingLine = openingLine.Substring(0, openingLine.Length - (last.Length + 1));
+            }
+        }
+    }
+
+    public void FindPinsAndChecks(int color)
+    {
+        attackCalculator.FindPinsAndChecks(color);
+    }
+
+    public void UpdateAttacksMap(int color)
+    {
+        attackCalculator.UpdateAttacksMap(color);
+    }
+
+    public bool IsInCheck()
+    {
+        // Checks if the player who's turn it is to play is in check
+        return (checkMap != 0UL);
+    }
+
+    public void UpdateCastlingRights()
+    {
+        if ((bitboards[0, Piece.King - 1] & 0x0000000000000010) == 0)
+        {
+            // King is not in place -- no castling.
+            castlingRights &= 0b1100;
+        }
+        if ((bitboards[1, Piece.King - 1] & 0x1000000000000000) == 0)
+        {
+            // King is not in place -- no castling.
+            castlingRights &= 0b0011;
+        }
+
+        if ((bitboards[1, Piece.Rook - 1] & 0x8000000000000000) == 0)
+        {
+            // No king side castling for black
+            castlingRights &= ~0b1000;
+        }
+        if ((bitboards[1, Piece.Rook - 1] & 0x0100000000000000) == 0)
+        {
+            // No queen side castling for black
+            castlingRights &= ~0b0100;
+        }
+
+        if ((bitboards[0, Piece.Rook - 1] & 0x0000000000000080) == 0)
+        {
+            // No king side castling for white
+            castlingRights &= ~0b0010;
+        }
+        if ((bitboards[0, Piece.Rook - 1] & 0x0000000000000001) == 0)
+        {
+            // No queen side castling for white
+            castlingRights &= ~0b0001;
+        }
+    }
+
+    public void DebugShowSquares(ulong squares, Color squareColor) => boardDrawer.GetComponent<GraphicalBoard>().DebugShowSquares(squares, squareColor);
+
+    private string MoveToNotation(Move move)
+    {
+        return moveToNotationConverter.MoveToNotation(move);
     }
 
     public string MoveToSAN(Move move)
     {
-        int from = move.from;
-        int to = move.to;
-        int piece = move.movedPiece;
-        int captured = move.capturedPiece;
-        int promotion = move.promotionPiece;
-
-        string san = "";
-
-        // Handle castling
-        if (Piece.GetPieceType(piece) == Piece.King)
-        {
-            if (Math.Abs(to - from) == 2)
-            {
-                return to > from ? "O-O" : "O-O-O";
-            }
-        }
-
-        // Get piece letter (empty for pawns)
-        string pieceLetter = Piece.GetPieceType(piece) == Piece.Pawn ? "" :
-            Piece.GetPieceType(piece) switch
-            {
-                Piece.Knight => "N",
-                Piece.Bishop => "B",
-                Piece.Rook => "R",
-                Piece.Queen => "Q",
-                Piece.King => "K",
-                _ => ""
-            };
-
-        // Determine capture symbol
-        string captureSymbol = captured != 0 ? "x" : "";
-
-        // For pawn captures, include the file of the pawn
-        if (Piece.GetPieceType(piece) == Piece.Pawn && captureSymbol != "")
-        {
-            pieceLetter = ((char)('a' + (from % 8))).ToString();
-        }
-
-        // Disambiguation: check if other pieces of same type can move to 'to'
-        if (pieceLetter != "" && captureSymbol != "")
-        {
-            string disambiguation = "";
-            Move[] moves = new Move[256];
-            int count = GenerateAllMoves(moves, Piece.IsBlack(piece));
-
-            foreach (var m in moves)
-            {
-                if (m.from == from) continue;
-                if (Piece.GetPieceType(m.movedPiece) != Piece.GetPieceType(piece)) continue;
-                if (m.to == to)
-                {
-                    // Same piece type can move to the same square -> add disambiguation
-                    disambiguation = ((char)('a' + (from % 8))).ToString();
-                    break;
-                }
-            }
-
-            pieceLetter += disambiguation;
-        }
-
-        // Add destination square
-        string toSquare = $"{(char)('a' + (to % 8))}{(to / 8) + 1}";
-
-        san += pieceLetter + captureSymbol + toSquare;
-
-        // Add promotion if exists
-        if (promotion != 0)
-        {
-            string promoLetter = Piece.GetPieceType(promotion) switch
-            {
-                Piece.Queen => "Q",
-                Piece.Rook => "R",
-                Piece.Bishop => "B",
-                Piece.Knight => "N",
-                _ => ""
-            };
-            san += "=" + promoLetter;
-        }
-
-        return san;
+        return moveToNotationConverter.MoveToSAN(move);
     }
-
 }

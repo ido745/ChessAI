@@ -191,7 +191,7 @@ public class AttackCalculator
 
     private void OnStalemate()
     {
-        Debug.Log("Game Over! Draw by stalemate!");
+        //Debug.Log("Game Over! Draw by stalemate!");
 
         // Handle stalemate logic:
         // 1. Update game state
