@@ -289,18 +289,10 @@ public class MoveExecuter
     // Helper method to move a bit from one position to another in a bitboard
     private ulong MoveBit(ulong bitboard, int from, int to) => SetBit(ClearBit(bitboard, from), to);
 
-    public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare)
+    public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare, ulong previousZobristKey)
     {
         // Xor the blackTurn
-        boardLogic.zobristKey ^= Zobrist.blackToMoveKey;
-        // Xor out the old en passant and castling rights.
-        if (boardLogic.enPassantSquare != 0UL)
-            boardLogic.zobristKey ^= Zobrist.enPassantFileKey[BitScan.TrailingZeroCount(boardLogic.enPassantSquare) % 8];
-        boardLogic.zobristKey ^= Zobrist.castlingKeys[boardLogic.currentCastling];
-        // Xor in the new en passant and castling rights.
-        if (previousEnPassantSquare != 0UL)
-            boardLogic.zobristKey ^= Zobrist.enPassantFileKey[BitScan.TrailingZeroCount(previousEnPassantSquare) % 8];
-        boardLogic.zobristKey ^= Zobrist.castlingKeys[previousCastlingRights];
+        boardLogic.zobristKey = previousZobristKey;
 
         int fromSquare = move.from;
         int toSquare = move.to;
@@ -312,16 +304,6 @@ public class MoveExecuter
         int color = Piece.IsBlack(movedPiece);
         int pieceType = Piece.GetPieceType(movedPiece);
         int capturedPieceType = Piece.GetPieceType(capturedPiece);
-
-        // Xor out old position (for promotion we need to xor out the promoted piece)
-        if (flag != 2)
-            boardLogic.zobristKey ^= Zobrist.pieceKeys[color, pieceType - 1, toSquare];
-        // Xor in new position (from square)
-        boardLogic.zobristKey ^= Zobrist.pieceKeys[color, pieceType - 1, fromSquare];
-
-        // Xor in captured piece
-        if (capturedPiece != 0)
-            boardLogic.zobristKey ^= Zobrist.pieceKeys[1 - color, capturedPieceType - 1, toSquare];
 
         // Handle special moves first
         switch (flag)
@@ -401,10 +383,6 @@ public class MoveExecuter
             // Update rook bitboard
             boardLogic.bitboards[color, Piece.Rook - 1] = ClearBit(boardLogic.bitboards[color, Piece.Rook - 1], rookToSquare);
             boardLogic.bitboards[color, Piece.Rook - 1] = SetBit(boardLogic.bitboards[color, Piece.Rook - 1], rookFromSquare);
-
-            // Update zobrist key - xor out the to square and xor in the from square
-            boardLogic.zobristKey ^= Zobrist.pieceKeys[color, Piece.Rook - 1, rookToSquare];
-            boardLogic.zobristKey ^= Zobrist.pieceKeys[color, Piece.Rook - 1, rookFromSquare];
         }
         else
         {
@@ -428,10 +406,6 @@ public class MoveExecuter
             // Update rook bitboard
             boardLogic.bitboards[color, Piece.Rook - 1] = ClearBit(boardLogic.bitboards[color, Piece.Rook - 1], rookToSquare);
             boardLogic.bitboards[color, Piece.Rook - 1] = SetBit(boardLogic.bitboards[color, Piece.Rook - 1], rookFromSquare);
-
-            // Update zobrist key - xor out the to square and xor in the from square
-            boardLogic.zobristKey ^= Zobrist.pieceKeys[color, Piece.Rook - 1, rookToSquare];
-            boardLogic.zobristKey ^= Zobrist.pieceKeys[color, Piece.Rook - 1, rookFromSquare];
         }
 
         UpdateAggregateBitboards();
@@ -459,9 +433,6 @@ public class MoveExecuter
             int capturedType = Piece.GetPieceType(capturedPiece);
             boardLogic.bitboards[capturedColor, capturedType - 1] = SetBit(boardLogic.bitboards[capturedColor, capturedType - 1], toSquare);
         }
-
-        // Xor out promoted piece square
-        boardLogic.zobristKey ^= Zobrist.pieceKeys[color, promotedPieceType - 1, toSquare];
 
         UpdateAggregateBitboards();
     }
@@ -498,8 +469,6 @@ public class MoveExecuter
         int capturedColor = 1 - color;
         boardLogic.bitboards[capturedColor, Piece.Pawn - 1] = SetBit(boardLogic.bitboards[capturedColor, Piece.Pawn - 1], capturedPawnSquare);
 
-        // Xor in the captured en passant piece
-        boardLogic.zobristKey ^= Zobrist.pieceKeys[1 - color, Piece.Pawn - 1, capturedPawnSquare];
 
         UpdateAggregateBitboards();
     }

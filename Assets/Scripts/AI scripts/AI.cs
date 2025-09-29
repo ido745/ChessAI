@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using Unity.Burst.CompilerServices;
 using UnityEditor;
 using UnityEngine;
 
@@ -44,6 +45,7 @@ public class AI : MonoBehaviour
 
     private struct MoveState
     {
+        public ulong zobristKey;
         public ulong enPassantSquare;
         public int castlingRights;
         public int currentCastling;
@@ -55,6 +57,7 @@ public class AI : MonoBehaviour
     }
 
     private TranspositionTable tt = new TranspositionTable(64); // 64 MB table
+    private Dictionary<ulong, int> evalCache = new Dictionary<ulong, int>(); // Cached evaluations for positions
 
     private Evaluate evaluator;
     [SerializeField] private BoardLogic boardLogic;
@@ -73,6 +76,7 @@ public class AI : MonoBehaviour
     public void StartThinking()
     {
         evaluator = GetComponent<Evaluate>();
+        evalCache.Clear();
         aiColor = boardLogic.turn;
 
         // Age the transposition table for new search
@@ -87,7 +91,7 @@ public class AI : MonoBehaviour
         }
 
         searchStopwatch = new Stopwatch();
-        searchTimeLimitMs = 2000;
+        searchTimeLimitMs = 3000;
         aborted = false;
 
         searchStopwatch.Start();
@@ -98,23 +102,16 @@ public class AI : MonoBehaviour
         while (!aborted && searchStopwatch.ElapsedMilliseconds < searchTimeLimitMs)
         {
             Move candidate = Search(depth);
-            if (!aborted)
+            if (!aborted && IsValidMove(candidate))  // Add move validation
             {
                 lastBestMove = candidate;
                 UnityEngine.Debug.Log($"Depth {depth} completed in {searchStopwatch.ElapsedMilliseconds} ms");
             }
             else
             {
-                break; // either no move or aborted
+                UnityEngine.Debug.Log($"Depth {depth} aborted or invalid move");
+                break; // Don't continue if search was aborted
             }
-
-            if (bestScoreForDebug > 80000 || bestScoreForDebug < -80000)
-            {
-                // we've found a mate -- no need to search deeper
-                UnityEngine.Debug.Log($"Found a mate in {depth}!");
-                break;
-            }
-
             depth++;
         }
 
@@ -136,6 +133,7 @@ public class AI : MonoBehaviour
 
     private Move Search(int depth)
     {
+        if (aborted) return new Move();
         Move[] moves = new Move[256];
         int movesCount = boardLogic.GenerateAllMoves(moves, boardLogic.turn);
 
@@ -172,6 +170,7 @@ public class AI : MonoBehaviour
 
             int score = -RecursiveSearch(depth - 1, -beta, -alpha, 1);
 
+            //print($"Move {boardLogic.MoveToSAN(move)} -> {score}");
             RestoreMoveState(move, state);
 
             if (score > bestScore)
@@ -225,7 +224,8 @@ public class AI : MonoBehaviour
         if (searchStopwatch.ElapsedMilliseconds >= searchTimeLimitMs)
         {
             aborted = true;
-            return 9999 * (boardLogic.turn == aiColor ? -1 : 1); // Return a really bad score - we didn't get to evaluate it.
+            return GetCachedEvaluation();
+            //return 9999 * (boardLogic.turn == aiColor ? -1 : 1); // Return a really bad score - we didn't get to evaluate it.
         }
 
         // Probe transposition table
@@ -268,12 +268,45 @@ public class AI : MonoBehaviour
 
             Move move = moves[i];
             MoveState state = SaveMoveState();
+            bool wasInCheck = boardLogic.IsInCheck();
+            ulong keyBefore = boardLogic.zobristKey;
             boardLogic.MakeMove(move);
             
-            int score = -RecursiveSearch(depth - 1, -beta, -alpha, ply + 1);
+            int score;
+
+            // Conditions for applying LMR
+            bool canReduce = i >= 3 &&                 // Don't reduce the first few moves
+                             depth >= 3 &&
+                             move.capturedPiece == 0 &&   // Don't reduce captures
+                             move.flag != (int)MoveFlag.Promotion && // Don't reduce promotions
+                             !boardLogic.IsInCheck() &&         // Don't reduce moves that give check
+                             !wasInCheck;  // Don't reduce check evasions
+            if (canReduce)
+            {
+                // 1. Calculate a dynamic reduction amount
+                int reduction = (int)(1 + Math.Log(depth) * Math.Log(i) / 2);
+                reduction = Math.Min(reduction, depth - 1); // Don't reduce into q-search
+
+                // 2. Search with a reduced depth and a ZERO WINDOW
+                score = -RecursiveSearch(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1);
+
+                // 3. If the scout search failed high (score > alpha), it means the move is promising.
+                //    We MUST re-search with the full depth and full window.
+                if (score > alpha)
+                {
+                    score = -RecursiveSearch(depth - 1, -beta, -alpha, ply + 1);
+                }
+            }
+            else
+            {
+                // Full depth, full window search for important moves (first few, captures, checks, etc.)
+                score = -RecursiveSearch(depth - 1, -beta, -alpha, ply + 1);
+            }
 
             RestoreMoveState(move, state);
 
+            ulong keyAfter = boardLogic.zobristKey;
+            if (keyBefore != keyAfter) print("Zobrist key mismatch!");
             if (aborted) return score;
 
             if (score > bestScore)
@@ -314,7 +347,7 @@ public class AI : MonoBehaviour
     }
 
 
-    private int QuiescenceSearch(int alpha, int beta, int depth = 10)
+    private int QuiescenceSearch(int alpha, int beta, int depth = 100)
     {
         int originalAlpha = alpha;
         ulong zobristKey = boardLogic.zobristKey;
@@ -329,14 +362,15 @@ public class AI : MonoBehaviour
         if (searchStopwatch.ElapsedMilliseconds >= searchTimeLimitMs)
         {
             aborted = true;
-            return 9999 * (boardLogic.turn == aiColor ? -1 : 1);
+            return GetCachedEvaluation();
+            //return 9999 * (boardLogic.turn == aiColor ? -1 : 1);
         }
 
         // Depth limit for quiescence
         if (depth <= 0)
         {
             // At maximum depth, just return static evaluation
-            return evaluator.GetScore(boardLogic) * (boardLogic.turn == 0 ? 1 : -1);
+            return GetCachedEvaluation();
         }
 
         // Check for terminal positions first
@@ -352,7 +386,7 @@ public class AI : MonoBehaviour
         }
 
         // Get stand-pat score (static evaluation)
-        int standPatScore = evaluator.GetScore(boardLogic) * (boardLogic.turn == 0 ? 1 : -1);
+        int standPatScore = GetCachedEvaluation();
 
         // Stand-pat cutoff
         if (standPatScore >= beta)
@@ -406,7 +440,7 @@ public class AI : MonoBehaviour
 
             RestoreMoveState(captureMove, state);
 
-            if (aborted) return 9999 * (boardLogic.turn == aiColor ? -1 : 1);
+            if (aborted) return GetCachedEvaluation();
 
             if (score >= beta)
             {
@@ -434,6 +468,16 @@ public class AI : MonoBehaviour
 
         tt.Store(zobristKey, (short)alpha, 0, entryType, new Move());
         return alpha;
+    }
+
+    private int GetCachedEvaluation()
+    {
+        if (evalCache.TryGetValue(boardLogic.zobristKey, out int cachedScore))
+            return cachedScore * (boardLogic.turn == 0 ? 1 : -1);
+
+        int score = evaluator.GetScore(boardLogic);
+        evalCache[boardLogic.zobristKey] = score;
+        return score * (boardLogic.turn == 0 ? 1 : -1);
     }
 
     private int GetCaptureScore(Move move)
@@ -517,24 +561,68 @@ public class AI : MonoBehaviour
     {
         int score = 0;
 
-        // Prioritize captures (victim value - attacker value)
+        // Prioritize captures but less aggressively
         if (move.capturedPiece != 0)
         {
             int victimValue = GetPieceValue(move.capturedPiece, move.to);
             int attackerValue = GetPieceValue(move.movedPiece, move.to);
-            score += (victimValue - attackerValue) * 100;
+            score += victimValue - attackerValue;
+
+            // Only big material gains get extra bonus
+            if (victimValue > attackerValue + 100)
+                score += 100; // Good trades only
         }
 
-        // Prioritize promotions
-        if (move.flag == (int)MoveFlag.Promotion)
-            score += 900;
-        if (move.flag == (int)MoveFlag.Castling)
-            score += 50;
-        // You can add more heuristics here later:
-        // - Central square moves: score += 10;
-        // - Piece development: score += 20;
+        // Add development bonuses
+        score += GetDevelopmentScore(move);
 
         return score;
+    }
+
+    private int GetDevelopmentScore(Move move)
+    {
+        int score = 0;
+        int pieceType = Piece.GetPieceType(move.movedPiece);
+
+        // Reward moving pieces from starting squares in opening
+        if (GetGamePhase() > 20) // Opening phase
+        {
+            if (pieceType == Piece.Knight)
+            {
+                // Knights from starting squares (b1, g1, b8, g8)
+                if (move.from == 1 || move.from == 6 || move.from == 57 || move.from == 62)
+                    score += 30;
+            }
+            else if (pieceType == Piece.Bishop)
+            {
+                // Bishops from starting squares
+                if (move.from == 2 || move.from == 5 || move.from == 58 || move.from == 61)
+                    score += 25;
+            }
+            else if (move.flag == (int)MoveFlag.Castling)
+            {
+                score += 50; // Castling is important
+            }
+        }
+
+        return score;
+    }
+
+    private int GetGamePhase()
+    {
+        // Calculate material (excluding pawns and kings)
+        int material = 0;
+
+        // Count material for both sides
+        for (int color = 0; color < 2; color++)
+        {
+            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Knight - 1]) * 3;
+            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Bishop - 1]) * 3;
+            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Rook - 1]) * 5;
+            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Queen - 1]) * 9;
+        }
+
+        return material; // 0 = endgame, 78 = opening (full material)
     }
 
     private int GetPieceValue(int piece, int pos)
@@ -558,6 +646,7 @@ public class AI : MonoBehaviour
     {
         MoveState state = new MoveState();
 
+        state.zobristKey = boardLogic.zobristKey;
         state.enPassantSquare = boardLogic.enPassantSquare;
         state.castlingRights = boardLogic.castlingRights;
         state.currentCastling = boardLogic.currentCastling;
@@ -580,7 +669,7 @@ public class AI : MonoBehaviour
     private void RestoreMoveState(Move move, MoveState state)
     {
         // 1. Unmake the physical move on the board
-        boardLogic.GetComponent<BoardLogic>().UnmakeMove(move, state.castlingRights, state.enPassantSquare);
+        boardLogic.GetComponent<BoardLogic>().UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
 
         // 2. Restore the entire derived state from the saved struct.
         // This is now the single point of state restoration.

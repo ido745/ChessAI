@@ -47,7 +47,7 @@ public class BoardLogic : MonoBehaviour
     // 1 - King, 2 - pawn, 3 - knight, 4 - bishop, 5 - rook, 6 - queen.
 
     string FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    //string FEN = "r3kb1r/pppnn1pp/8/8/4N3/5Q2/P2R1KPq/2R5 w kq - ";
+    //string FEN = "r1b2rk1/2q1bppp/p2p1n2/npp1p3/3PP3/1PP2N1P/P1B2PP1/RNBQR1K1 w - - - ";
     public ulong zobristKey;
 
     public short turn = 0;     // 0 - white, 1 - black.
@@ -252,9 +252,9 @@ public class BoardLogic : MonoBehaviour
         openingHistory.Push(notation);
     }
 
-    public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare)
+    public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare, ulong previousZobristKey)
     {
-        moveExecuter.UnmakeMove(move, previousCastlingRights, previousEnPassantSquare);
+        moveExecuter.UnmakeMove(move, previousCastlingRights, previousEnPassantSquare, previousZobristKey);
 
 
         if (openingHistory.Count > 0)

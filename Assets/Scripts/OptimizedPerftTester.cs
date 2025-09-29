@@ -79,6 +79,7 @@ public class OptimizedPerftTester : MonoBehaviour
     // Lightweight state tracking for move unmaking
     private struct MoveState
     {
+        public ulong zobristKey;
         public ulong enPassantSquare;
         public int castlingRights;
         public int currentCastling;
@@ -278,6 +279,7 @@ public class OptimizedPerftTester : MonoBehaviour
     {
         MoveState state = new MoveState();
 
+        state.zobristKey = boardLogic.zobristKey;
         state.enPassantSquare = boardLogic.enPassantSquare;
         state.castlingRights = boardLogic.castlingRights;
         state.currentCastling = boardLogic.currentCastling;
@@ -300,7 +302,7 @@ public class OptimizedPerftTester : MonoBehaviour
     private void RestoreMoveState(Move move, MoveState state)
     {
         // 1. Unmake the physical move on the board
-        boardLogic.GetComponent<BoardLogic>().UnmakeMove(move, state.castlingRights, state.enPassantSquare);
+        boardLogic.GetComponent<BoardLogic>().UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
 
         // 2. Restore the entire derived state from the saved struct.
         // This is now the single point of state restoration.
