@@ -7,7 +7,7 @@ using System;
 using UnityEditor.Rendering.LookDev;
 using System.Collections;
 
-public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerDownHandler, IPointerUpHandler
 {
     public Canvas canvas; // Assign via inspector
     public GraphicRaycaster raycaster; // Assign via inspector
@@ -19,7 +19,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
     private BoardLogic boardManager;
     private GraphicalBoard boardDrawer;
     private Vector2 originalPosition;
-    private bool isDragged = false;
+    private bool isMoving = false;
 
     ulong moves = 0;
 
@@ -36,55 +36,22 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
 
     private int preSelectedPromotionPiece = -1; // -1 means no pre-selection
 
-    public void OnBeginDrag(PointerEventData eventData)
+    public void OnPointerDown(PointerEventData eventData){}
+
+    public void OnPointerUp(PointerEventData eventData)
     {
-        PointerEventData pointerData = new PointerEventData(EventSystem.current);
-        pointerData.position = Input.mousePosition;
-
-        int type = pieceType;
-        isDragged = (type >> 4) == boardManager.turn;
-
-        if (!isDragged)
-            return;
-
-        moves = boardManager.GenerateMoves(index, pieceType);
-
-        ulong enemies = (Piece.IsBlack(pieceType) == 1) ? boardManager.Wbitboard : boardManager.Bbitboard;
-        boardDrawer.ShowTargets(moves, enemies);
-
-        originalPosition = rectTransform.anchoredPosition;
-
-        preSelectedPromotionPiece = -1;
+        PieceSelected();
     }
 
-    void Update()
+    public void OnBeginDrag(PointerEventData eventData)
     {
-        // Only check for input when dragging and it's a pawn
-        if (isDragged && Piece.GetPieceType(pieceType) == Piece.Pawn)
-        {
-            if (Input.GetKeyDown(KeyCode.Q))
-            {
-                preSelectedPromotionPiece = Piece.Queen;
-            }
-            else if (Input.GetKeyDown(KeyCode.W))
-            {
-                preSelectedPromotionPiece = Piece.Knight;
-            }
-            else if (Input.GetKeyDown(KeyCode.E))
-            {
-                preSelectedPromotionPiece = Piece.Bishop;
-            }
-            else if (Input.GetKeyDown(KeyCode.R))
-            {
-                preSelectedPromotionPiece = Piece.Rook;
-            }
-        }
+        PieceSelected();
     }
 
     public void OnDrag(PointerEventData eventData)
     {
         // Move the piece with the mouse
-        if (isDragged)
+        if (isMoving)
         {
             rectTransform.anchoredPosition += eventData.delta / canvas.scaleFactor;
         }
@@ -92,16 +59,48 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        if (!isDragged)
+        MovePiece(true);
+        isMoving = false;
+    }
+
+    private void PieceSelected()
+    {
+        // Clear anything that has already been displayed
+        boardDrawer.HideTargets();
+
+        // Show the legal moves and prepare for move
+        PointerEventData pointerData = new PointerEventData(EventSystem.current);
+        pointerData.position = Input.mousePosition;
+
+        int type = pieceType;
+        // Only move if this is our turn
+        isMoving = (type >> 4) == boardManager.turn;
+        print($"hello! moving? {isMoving}");
+        if (!isMoving)
+            return;
+
+        moves = boardManager.GenerateMoves(index, pieceType);
+
+        ulong enemies = (Piece.IsBlack(pieceType) == 1) ? boardManager.Wbitboard : boardManager.Bbitboard;
+        boardDrawer.ShowTargets(moves, enemies);
+        print("showing targets");
+        originalPosition = rectTransform.anchoredPosition;
+
+        preSelectedPromotionPiece = -1;
+    }
+
+    private void MovePiece(bool isDragged)
+    {
+        if (!isMoving)
         {
             return;
         }
-
+        print("started to move");
         List<RaycastResult> results = new List<RaycastResult>();
 
-        // Raycast from the piece's position
+        // Raycast from the piece's position if we're dragged, the mouse's position if it's a click
         PointerEventData data = new PointerEventData(EventSystem.current);
-        data.position = transform.position;
+        data.position = isDragged ? transform.position : Input.mousePosition;
 
         raycaster.Raycast(data, results);
 
@@ -112,7 +111,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
 
                 // Snap the piece to the square
                 RectTransform squareRect = result.gameObject.GetComponent<RectTransform>();
-                rectTransform.position = squareRect.position;
+                rectTransform.anchoredPosition = squareRect.anchoredPosition;
 
                 // Calculate the new index of the piece
                 string name = result.gameObject.name;
@@ -163,7 +162,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                 }
 
                 Move move = new Move(index, newIndex, pieceType, boardManager.board[newIndex], flag);
-                
+
 
                 boardManager.MakeMove(move);
                 boardDrawer.MakeVisualMove(move, gameObject, false);
@@ -179,9 +178,42 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         rectTransform.anchoredPosition = originalPosition;
 
         // Always cleanup
-        isDragged = false;
+        isMoving = false;
         preSelectedPromotionPiece = -1; // Reset pre-selection
         boardDrawer?.HideTargets();
+    }
+
+    void Update()
+    {
+        // Look for move selection via click
+        if (Input.GetMouseButtonDown(0) && isMoving)
+        {
+            print("came from update:");
+            MovePiece(false);
+            isMoving = false;
+            originalPosition = rectTransform.anchoredPosition;
+        }
+
+        // Only check for input when dragging and it's a pawn
+        if (isMoving && Piece.GetPieceType(pieceType) == Piece.Pawn)
+        {
+            if (Input.GetKeyDown(KeyCode.Q))
+            {
+                preSelectedPromotionPiece = Piece.Queen;
+            }
+            else if (Input.GetKeyDown(KeyCode.W))
+            {
+                preSelectedPromotionPiece = Piece.Knight;
+            }
+            else if (Input.GetKeyDown(KeyCode.E))
+            {
+                preSelectedPromotionPiece = Piece.Bishop;
+            }
+            else if (Input.GetKeyDown(KeyCode.R))
+            {
+                preSelectedPromotionPiece = Piece.Rook;
+            }
+        }
     }
 
     public void CallAI()
