@@ -6,6 +6,7 @@ using System.Linq;
 using Unity.Burst.CompilerServices;
 using UnityEditor;
 using UnityEngine;
+using System.Threading.Tasks;
 
 public class AI : MonoBehaviour
 {
@@ -73,13 +74,14 @@ public class AI : MonoBehaviour
 
     // Start is called before the first frame update
     // Iterative deepening controller (call from StartThinking)
-    public void StartThinking()
+    
+
+    public async void StartThinking()
     {
         evaluator = GetComponent<Evaluate>();
         evalCache.Clear();
         aiColor = boardLogic.turn;
-
-        // Age the transposition table for new search
+    
         tt.NextAge();
 
         Move? bookMove = TryBookMove();
@@ -90,44 +92,50 @@ public class AI : MonoBehaviour
             return;
         }
 
-        searchStopwatch = new Stopwatch();
-        searchTimeLimitMs = 3000;
-        aborted = false;
+        // Run search on background thread
+        Move bestMove = await Task.Run(() => SearchOnBackgroundThread());
 
-        searchStopwatch.Start();
-
-        Move lastBestMove = new Move();
-        int depth = 1;
-        bestScoreForDebug = -999999;
-        while (!aborted && searchStopwatch.ElapsedMilliseconds < searchTimeLimitMs)
+        // Back on main thread - safe to use Unity APIs
+        if (IsValidMove(bestMove))
         {
-            Move candidate = Search(depth);
-            if (!aborted && IsValidMove(candidate))  // Add move validation
-            {
-                lastBestMove = candidate;
-                UnityEngine.Debug.Log($"Depth {depth} completed in {searchStopwatch.ElapsedMilliseconds} ms");
-            }
-            else
-            {
-                UnityEngine.Debug.Log($"Depth {depth} aborted or invalid move");
-                break; // Don't continue if search was aborted
-            }
-            depth++;
-        }
-
-        searchStopwatch.Stop();
-
-        if (IsValidMove(lastBestMove))
-        {
-            boardLogic.MakeMove(lastBestMove);
-            graphicalBoard.MakeVisualMove(lastBestMove);
-            print($"Final move: {boardLogic.MoveToSAN(lastBestMove)} (depth {depth - 1}, time {searchStopwatch.ElapsedMilliseconds} ms)." +
-                $" It will result in a score of {bestScoreForDebug}");
+            boardLogic.MakeMove(bestMove);
+            graphicalBoard.MakeVisualMove(bestMove);
+            print($"Final move: {boardLogic.MoveToSAN(bestMove)} - Score: {bestScoreForDebug}");
         }
         else
         {
             print("No move found (game over or aborted).");
         }
+    }
+
+    private Move SearchOnBackgroundThread()
+    {
+        searchStopwatch = new Stopwatch();
+        searchTimeLimitMs = 3000;
+        aborted = false;
+        searchStopwatch.Start();
+
+        Move lastBestMove = new Move();
+        int depth = 1;
+        bestScoreForDebug = -999999;
+    
+        while (!aborted && searchStopwatch.ElapsedMilliseconds < searchTimeLimitMs)
+        {
+            Move candidate = Search(depth);
+            if (!aborted && IsValidMove(candidate))
+            {
+                lastBestMove = candidate;
+                // Can't use Debug.Log here - on background thread!
+            }
+            else
+            {
+                break;
+            }
+            depth++;
+        }
+
+        searchStopwatch.Stop();
+        return lastBestMove;
     }
 
 
@@ -168,7 +176,7 @@ public class AI : MonoBehaviour
             MoveState state = SaveMoveState();
             boardLogic.MakeMove(move);
 
-            int score = -RecursiveSearch(depth - 1, -beta, -alpha, 1);
+            int score = -RecursiveSearch(depth - 1, -beta, -alpha, 1, true);
 
             //print($"Move {boardLogic.MoveToSAN(move)} -> {score}");
             RestoreMoveState(move, state);
@@ -216,7 +224,7 @@ public class AI : MonoBehaviour
     }
 
 
-    private int RecursiveSearch(int depth, int alpha, int beta, int ply)
+    private int RecursiveSearch(int depth, int alpha, int beta, int ply, bool allowNullMove)
     {
         int originalAlpha = alpha;
 
@@ -256,6 +264,48 @@ public class AI : MonoBehaviour
             return QuiescenceSearch(alpha, beta);
         }
 
+        // Null move pruning
+        bool inCheck = boardLogic.IsInCheck();
+        ulong fiendlyBitboard = (boardLogic.turn == 0) ? boardLogic.Wbitboard : boardLogic.Bbitboard;
+        bool hasNonPawnMaterial = ((fiendlyBitboard & ~boardLogic.bitboards[boardLogic.turn, Piece.Pawn - 1]) != 0UL);
+
+        if (allowNullMove &&
+            !inCheck &&
+            hasNonPawnMaterial &&
+            depth >= 3 &&
+            beta - alpha > 1)
+        {
+            // Make a "null move" - just switch turns
+            MoveState nullState = SaveMoveState();
+            boardLogic.turn = (short)(1 - boardLogic.turn);
+            boardLogic.zobristKey ^= Zobrist.blackToMoveKey;
+
+            // Clear en passant if it exists
+            if (boardLogic.enPassantSquare != 0)
+            {
+                int epSquare = BitScan.TrailingZeroCount(boardLogic.enPassantSquare);
+                boardLogic.zobristKey ^= Zobrist.enPassantFileKey[epSquare % 8];
+                boardLogic.enPassantSquare = 0;
+            }
+
+            // Search with reduced depth
+            int R = depth >= 6 ? 3 : 2;
+            int nullScore = -RecursiveSearch(depth - 1 - R, -beta, -beta + 1, ply + 1, false);
+
+            // Restore the position
+            boardLogic.turn = (short)(1 - boardLogic.turn);
+            boardLogic.zobristKey = nullState.zobristKey;
+            boardLogic.enPassantSquare = nullState.enPassantSquare;
+
+            // If null move caused a beta cutoff, prune this branch
+            if (nullScore >= beta)
+            {
+                if (nullScore > 89000)
+                    return beta;
+                return nullScore;
+            }
+        }
+
         OrderMoves(moves, movesCount, ttMove);
 
         int bestScore = -999999;
@@ -288,19 +338,19 @@ public class AI : MonoBehaviour
                 reduction = Math.Min(reduction, depth - 1); // Don't reduce into q-search
 
                 // 2. Search with a reduced depth and a ZERO WINDOW
-                score = -RecursiveSearch(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1);
+                score = -RecursiveSearch(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, true);
 
                 // 3. If the scout search failed high (score > alpha), it means the move is promising.
                 //    We MUST re-search with the full depth and full window.
                 if (score > alpha)
                 {
-                    score = -RecursiveSearch(depth - 1, -beta, -alpha, ply + 1);
+                    score = -RecursiveSearch(depth - 1, -beta, -alpha, ply + 1, true);
                 }
             }
             else
             {
                 // Full depth, full window search for important moves (first few, captures, checks, etc.)
-                score = -RecursiveSearch(depth - 1, -beta, -alpha, ply + 1);
+                score = -RecursiveSearch(depth - 1, -beta, -alpha, ply + 1, true);
             }
 
             RestoreMoveState(move, state);
@@ -669,7 +719,7 @@ public class AI : MonoBehaviour
     private void RestoreMoveState(Move move, MoveState state)
     {
         // 1. Unmake the physical move on the board
-        boardLogic.GetComponent<BoardLogic>().UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
+        boardLogic.UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
 
         // 2. Restore the entire derived state from the saved struct.
         // This is now the single point of state restoration.

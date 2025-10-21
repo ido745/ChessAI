@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
@@ -7,22 +8,35 @@ using UnityEngine.UI;
 // Responsible for drawing the UI and creating the gameObjects needed.
 public class GraphicalBoard : MonoBehaviour
 {
-    [SerializeField] Color whiteColor;
-    [SerializeField] Color blackColor;
     [SerializeField] public Vector2 tileSize = new Vector2(50, 50);
-    [SerializeField] Sprite squareSprite;
-    [SerializeField] Sprite targetSprite;
-    [SerializeField] Sprite capturingSprite;
-
-    private Transform cellsHolder;
-    private Transform targetsHolder;
-    private Transform debugHolder;
-    private GameObject[] boardPieces = new GameObject[64];
 
     [SerializeField] private Transform piecesHolder;
 
     [SerializeField] public RectTransform PromotionUI_W;
     [SerializeField] public RectTransform PromotionUI_B;
+
+    [Header("Colors")]
+    [SerializeField] Color whiteColor;
+    [SerializeField] Color blackColor;
+    [SerializeField] Color highlightColor = Color.cyan;
+
+    [Header("Sprites")]
+    [SerializeField] Sprite squareSprite;
+    [SerializeField] Sprite targetSprite;
+    [SerializeField] Sprite capturingSprite;
+
+    [Header("Timer & UI")]
+    [SerializeField] Timer timer;
+    [SerializeField] GameObject GameOverPanel;
+    TextMeshProUGUI endgameText;
+    private int turn = 0;
+
+    private Transform cellsHolder;
+    private Transform targetsHolder;
+    private Transform highlightHolder;
+    private GameObject[] boardPieces = new GameObject[64];
+    private BoardLogic boardLogic;
+
 
     Dictionary<int, string> dict = new Dictionary<int, string>
     {
@@ -36,7 +50,10 @@ public class GraphicalBoard : MonoBehaviour
 
     void Start()
     {
+        GameOverPanel.SetActive(false);
+        endgameText = GameOverPanel.GetComponentInChildren<TextMeshProUGUI>();
         DrawBoardUI();
+        boardLogic = GetComponentInChildren<BoardLogic>();
     }
 
     public void MakeVisualMove(Move move, GameObject go = null, bool animation = true)
@@ -55,6 +72,8 @@ public class GraphicalBoard : MonoBehaviour
             boardPieces[move.to].SetActive(false);
         }
         boardPieces[move.to] = go;
+
+        HighlightMove(move.from, move.to);
 
         if (move.flag == 1)
         {
@@ -124,11 +143,15 @@ public class GraphicalBoard : MonoBehaviour
             int isBlack = Piece.IsBlack(move.movedPiece);
 
             if (isBlack == 1)
+            {
                 boardPieces[move.to + 8].SetActive(false);
                 boardPieces[move.to + 8] = null;
+            }
             if (isBlack == 0)
+            {
                 boardPieces[move.to - 8].SetActive(false);
                 boardPieces[move.to - 8] = null;
+            }
         }
         if (move.flag != 2)
         {
@@ -142,8 +165,35 @@ public class GraphicalBoard : MonoBehaviour
                 rect.anchoredPosition = newPos;
             go.GetComponent<BasePiece>().index = move.to;
         }
+
+        timer.SwitchTurn();
+
+        // Look for checkmate/stalemate
+        int checkForEndGame = boardLogic.FindPinsAndChecks(turn);
+        if (checkForEndGame == 1)
+        {
+            // 1 - turn won by checkmate
+
+            if (turn == 1)
+                EndGame("Game over - white won!");
+            else
+                EndGame("Game over - black won!");
+            
+        }
+        if (checkForEndGame == 2)
+        {
+            // Stalemate
+            EndGame("Stalemate!");
+        }
     }
 
+    public void EndGame(string endgameMessage)
+    {
+        GameOverPanel.SetActive(true);
+        endgameText.text = endgameMessage;
+        timer.PauseTimer();
+        boardLogic.EndGame();
+    }
     private IEnumerator SmoothMove(GameObject piece, Vector2 targetPos, float duration)
     {
         RectTransform rect = piece.GetComponent<RectTransform>();
@@ -167,7 +217,27 @@ public class GraphicalBoard : MonoBehaviour
 
     void DrawBoardUI()
     {
-        CreateCellsHolder();
+        // Creates a cell holder, which is at the top = the background.
+        GameObject holder = new GameObject("CellsHolder", typeof(RectTransform));
+        holder.transform.SetParent(this.transform, false);
+        cellsHolder = holder.transform;
+
+        cellsHolder.SetAsFirstSibling();
+
+        // HighLight holder
+        highlightHolder = transform.Find("HighLightHolder");
+
+        if (highlightHolder == null)
+            highlightHolder = (new GameObject("HighLightHolder", typeof(RectTransform))).transform;
+        highlightHolder.SetParent(this.transform, false);
+
+        // Target holder
+        targetsHolder = transform.Find("TargetHolder");
+
+        if (targetsHolder == null)
+            targetsHolder = (new GameObject("TargetHolder", typeof(RectTransform))).transform;
+        targetsHolder.SetParent(this.transform, false);
+
         for (int y = 0; y < 8; y++)
         {
             for (int x = 0; x < 8; x++)
@@ -264,37 +334,38 @@ public class GraphicalBoard : MonoBehaviour
         return piece;
     }
 
-    public void ShowTargets(List<Move> moves)
+    public void HighlightMove(int from, int to)
     {
-        // Create holder object
-        GameObject holder = new GameObject("TargetHolder", typeof(RectTransform));
-        holder.transform.SetParent(this.transform, false);
-        targetsHolder = holder.transform;
+        HideHighlight();
 
-        targetsHolder.SetSiblingIndex(1);
+        // from square
+        int xFrom = from % 8;
+        int yFrom = from / 8;
+        Vector2 anchoredPos = new Vector2((xFrom - 4) * tileSize.x, (yFrom - 3.5f) * tileSize.y);
 
-        foreach (var move in moves)
+        DrawSquare(anchoredPos, highlightColor, from, capturingSprite, highlightHolder, 1f, 0.5f);
+
+        // to square
+        int xTo = to % 8;
+        int yTo = to / 8;
+        anchoredPos = new Vector2((xTo - 4) * tileSize.x, (yTo - 3.5f) * tileSize.y);
+
+        DrawSquare(anchoredPos, highlightColor, to, capturingSprite, highlightHolder, 1f, 0.5f);
+    }
+
+    public void HideHighlight()
+    {
+        if (highlightHolder == null || highlightHolder.gameObject == null)
+            return;
+
+        foreach (Transform child in highlightHolder)
         {
-            // Position is calculated by the same way we calculated the Cells' position
-            int x = move.to % 8;
-            int y = move.to / 8;
-            Vector2 anchoredPos = new Vector2((x - 4) * tileSize.x, (y - 3.5f) * tileSize.y);
-
-            if (move.capturedPiece == 0)
-                DrawSquare(anchoredPos, Color.red, move.to, targetSprite, targetsHolder, 0.5f);
-            else
-                DrawSquare(anchoredPos, Color.red, move.to, capturingSprite, targetsHolder, 1f, 0.5f);
+            Destroy(child.gameObject);
         }
     }
 
     public void ShowTargets(ulong moves, ulong enemyPieces)
     {
-        GameObject holder = new GameObject("TargetHolder", typeof(RectTransform));
-        holder.transform.SetParent(this.transform, false);
-        targetsHolder = holder.transform;
-
-        targetsHolder.SetSiblingIndex(1);
-
         // This loop efficiently iterates through each '1' in the moves bitboard
         while (moves != 0)
         {
@@ -325,30 +396,14 @@ public class GraphicalBoard : MonoBehaviour
         }
     }
 
-    public void DebugShowSquares(ulong squares, Color squareColor)
+    public void HideTargets()
     {
-        DebugHideSquares();
-        GameObject holder = new GameObject("DebugVisualizer", typeof(RectTransform));
-        holder.transform.SetParent(this.transform, false);
-        debugHolder = holder.transform;
+        if (targetsHolder == null || targetsHolder.gameObject == null)
+            return;
 
-        debugHolder.SetSiblingIndex(1);
-
-        // This loop efficiently iterates through each '1' in the moves bitboard
-        while (squares != 0)
+        foreach (Transform child in targetsHolder)
         {
-            // 1. Find the index of the next available move (the least significant bit)
-            int to = BitScan.TrailingZeroCount(squares);
-            ulong moveBit = 1UL << to;
-
-            // 2. Calculate the screen position
-            int x = to % 8;
-            int y = to / 8;
-            Vector2 anchoredPos = new Vector2((x - 4) * tileSize.x, (y - 3.5f) * tileSize.y);
-
-            
-            DrawSquare(anchoredPos, squareColor, to, capturingSprite, debugHolder, 1f, 0.5f);
-            squares &= squares - 1;
+            Destroy(child.gameObject);
         }
     }
 
@@ -376,10 +431,9 @@ public class GraphicalBoard : MonoBehaviour
         BasePiece promotedPiece = pieceGO.GetComponent<BasePiece>();
         int previousType = promotedPiece.GetPieceType();
 
-        BoardLogic boardManager = GetComponentInChildren<BoardLogic>();
-        Move move = new Move(oldIndex, promotionIndex, previousType, boardManager.board[promotionIndex], 2, chosenPiece | Piece.GetColor(previousType));
+        Move move = new Move(oldIndex, promotionIndex, previousType, boardLogic.board[promotionIndex], 2, chosenPiece | Piece.GetColor(previousType));
 
-        boardManager.MakeMove(move);
+        boardLogic.MakeMove(move);
         MakeVisualMove(move, pieceGO);
 
         // Call the ai now that we're done.
@@ -399,28 +453,5 @@ public class GraphicalBoard : MonoBehaviour
         GameObject AIobject = GameObject.Find("AI_manager");
         AI ai = AIobject.GetComponent<AI>();
         ai.StartThinking();
-    }
-
-    public void DebugHideSquares()
-    {
-        if (debugHolder != null && debugHolder.gameObject != null)
-            Destroy(debugHolder.gameObject);
-    }
-
-    public void HideTargets()
-    {
-        if (targetsHolder != null && targetsHolder.gameObject != null)
-            Destroy(targetsHolder.gameObject);
-    }
-
-    void CreateCellsHolder()
-    {
-        // Creates a cell holder, which is at the top = the background.
-        GameObject holder = new GameObject("CellsHolder", typeof(RectTransform));
-        holder.transform.SetParent(this.transform, false);
-        cellsHolder = holder.transform;
-
-        // Make sure it's rendered behind the pieces
-        cellsHolder.SetAsFirstSibling();
     }
 }

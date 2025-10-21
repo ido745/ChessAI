@@ -269,9 +269,9 @@ public class BoardLogic : MonoBehaviour
         }
     }
 
-    public void FindPinsAndChecks(int color)
+    public int FindPinsAndChecks(int color)
     {
-        attackCalculator.FindPinsAndChecks(color);
+        return attackCalculator.FindPinsAndChecks(color);
     }
 
     public void UpdateAttacksMap(int color)
@@ -283,6 +283,11 @@ public class BoardLogic : MonoBehaviour
     {
         // Checks if the player who's turn it is to play is in check
         return (checkMap != 0UL);
+    }
+
+    public void EndGame()
+    {
+        turn = -1;
     }
 
     public void UpdateCastlingRights()
@@ -320,8 +325,6 @@ public class BoardLogic : MonoBehaviour
             castlingRights &= ~0b0001;
         }
     }
-
-    public void DebugShowSquares(ulong squares, Color squareColor) => boardDrawer.GetComponent<GraphicalBoard>().DebugShowSquares(squares, squareColor);
 
     private string MoveToNotation(Move move)
     {

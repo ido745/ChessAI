@@ -45,6 +45,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
 
     public void OnBeginDrag(PointerEventData eventData)
     {
+        originalPosition = rectTransform.anchoredPosition;
         PieceSelected();
     }
 
@@ -75,7 +76,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         int type = pieceType;
         // Only move if this is our turn
         isMoving = (type >> 4) == boardManager.turn;
-        print($"hello! moving? {isMoving}");
+
         if (!isMoving)
             return;
 
@@ -84,7 +85,6 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         ulong enemies = (Piece.IsBlack(pieceType) == 1) ? boardManager.Wbitboard : boardManager.Bbitboard;
         boardDrawer.ShowTargets(moves, enemies);
         print("showing targets");
-        originalPosition = rectTransform.anchoredPosition;
 
         preSelectedPromotionPiece = -1;
     }

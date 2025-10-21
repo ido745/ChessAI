@@ -11,7 +11,7 @@ public class AttackCalculator
     }
 
     // Fixed FindPinsAndChecks method with proper loop termination
-    public void FindPinsAndChecks(int color)
+    public int FindPinsAndChecks(int color)
     {
         boardLogic.pinRays = new ulong[64];
         boardLogic.checkMap = 0UL;
@@ -115,10 +115,12 @@ public class AttackCalculator
             if (boardLogic.checkMap != 0)
             {
                 OnCheckmate(color);
-                return;
+                return 1;
             }
             OnStalemate();
+            return 2;
         }
+        return 0;
     }
 
     // Also fix the UpdateAttacksMap method to prevent infinite loops
