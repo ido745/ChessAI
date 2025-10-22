@@ -4,7 +4,7 @@ using UnityEngine.EventSystems;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System;
-using UnityEditor.Rendering.LookDev;
+//using UnityEditor.Rendering.LookDev;
 using System.Collections;
 
 public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerDownHandler, IPointerUpHandler
@@ -133,7 +133,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                     // Invalid move.
                     break;
                 }
-
+                print($"valid move. going to: {newIndex}");
                 int flag = boardManager.FindFlag(pieceType, index, newIndex);
 
                 // If the move is promotion, we would also like to update the new piece type
@@ -189,9 +189,9 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         if (Input.GetMouseButtonDown(0) && isMoving)
         {
             print("came from update:");
+            originalPosition = rectTransform.anchoredPosition;
             MovePiece(false);
             isMoving = false;
-            originalPosition = rectTransform.anchoredPosition;
         }
 
         // Only check for input when dragging and it's a pawn

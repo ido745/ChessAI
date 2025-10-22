@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using Unity.Burst.CompilerServices;
-using UnityEditor;
 using UnityEngine;
 using System.Threading.Tasks;
+using TMPro;
 
 public class AI : MonoBehaviour
 {
@@ -64,6 +62,8 @@ public class AI : MonoBehaviour
     [SerializeField] private BoardLogic boardLogic;
     [SerializeField] private GraphicalBoard graphicalBoard;
     [SerializeField] private int aiColor;
+
+    [SerializeField] private TextMeshProUGUI InfoText;
 
     private Stopwatch searchStopwatch;
     private int searchTimeLimitMs;
@@ -733,19 +733,20 @@ public class AI : MonoBehaviour
 
     public Move? TryBookMove()
     {
-        string openingsDir = Path.Combine(Application.dataPath, "Scripts/AI scripts/Openings");
-        if (!Directory.Exists(openingsDir))
-            return null;
-
         string currentMoves = boardLogic.openingLine.Trim();
-        print(currentMoves);
 
         // Store potential book moves with their details
         List<(Move move, string openingName, int lineLength)> candidateMoves = new List<(Move, string, int)>();
 
-        foreach (string file in Directory.GetFiles(openingsDir, "*.tsv"))
+        // Load all text assets from Resources/Openings folder
+        TextAsset[] openingFiles = Resources.LoadAll<TextAsset>("Openings");
+
+        foreach (TextAsset openingFile in openingFiles)
         {
-            foreach (string line in File.ReadAllLines(file))
+            // Split by newline, handling both \r\n (Windows) and \n (Unix)
+            string[] lines = openingFile.text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (string line in lines)
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 string[] parts = line.Split('\t');
@@ -790,7 +791,8 @@ public class AI : MonoBehaviour
             int randomIndex = UnityEngine.Random.Range(0, topCandidates.Count);
             var selectedMove = topCandidates[randomIndex];
 
-            UnityEngine.Debug.Log($"Book move found: {boardLogic.MoveToSAN(selectedMove.move)} ({selectedMove.openingName}) - Selected from {topCandidates.Count} top candidates");
+            //UnityEngine.Debug.Log($"Book move found: {boardLogic.MoveToSAN(selectedMove.move)} ({selectedMove.openingName}) - Selected from {topCandidates.Count} top candidates");
+            InfoText.text = selectedMove.openingName;
             return selectedMove.move;
         }
 
