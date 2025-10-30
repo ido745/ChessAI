@@ -8,7 +8,7 @@ using TMPro;
 
 public class AI : MonoBehaviour
 {
-    const int MAX_PLY = 20;
+    const int MAX_PLY = 128;    // raised to 128 instead of 20
 
     // Enum for different types of transposition table entries
     public enum TTEntryType : byte
@@ -59,6 +59,7 @@ public class AI : MonoBehaviour
     private Dictionary<ulong, int> evalCache = new Dictionary<ulong, int>(); // Cached evaluations for positions
 
     private Evaluate evaluator;
+    [SerializeField] private int TIME_LIMIT = 3000;
     [SerializeField] private BoardLogic boardLogic;
     [SerializeField] private GraphicalBoard graphicalBoard;
     [SerializeField] private int aiColor;
@@ -71,18 +72,30 @@ public class AI : MonoBehaviour
 
     private int bestScoreForDebug;
 
+    private Move[,] killerMoves = new Move[MAX_PLY, 2]; // Two killer moves per ply
+    private int[,] historyTable = new int[64, 64]; // [from][to] square history scores
+
+    // Saves the opening books.
+    private TextAsset[] openingFiles;
 
     // Start is called before the first frame update
-    // Iterative deepening controller (call from StartThinking)
-    
-
-    public async void StartThinking()
+    private void Start()
     {
         evaluator = GetComponent<Evaluate>();
+        openingFiles = Resources.LoadAll<TextAsset>("Openings");
+    }
+
+    private int nodesSearched = 0;
+    private int ttProbes = 0;
+    public async void StartThinking()
+    {
         evalCache.Clear();
         aiColor = boardLogic.turn;
     
         tt.NextAge();
+
+        // Clear history table for new search
+        Array.Clear(historyTable, 0, historyTable.Length);
 
         Move? bookMove = TryBookMove();
         if (bookMove != null)
@@ -110,30 +123,40 @@ public class AI : MonoBehaviour
 
     private Move SearchOnBackgroundThread()
     {
+        nodesSearched = 0;
+        ttProbes = 0;
+        tt.Clear();
+
         searchStopwatch = new Stopwatch();
-        searchTimeLimitMs = 3000;
+        searchTimeLimitMs = TIME_LIMIT;
         aborted = false;
         searchStopwatch.Start();
 
         Move lastBestMove = new Move();
+
         int depth = 1;
         bestScoreForDebug = -999999;
     
         while (!aborted && searchStopwatch.ElapsedMilliseconds < searchTimeLimitMs)
         {
             Move candidate = Search(depth);
+            depth++;
+
             if (!aborted && IsValidMove(candidate))
             {
                 lastBestMove = candidate;
-                // Can't use Debug.Log here - on background thread!
             }
             else
             {
                 break;
             }
-            depth++;
         }
 
+        float nps = nodesSearched / (TIME_LIMIT / 1000f);
+        float ttHitRate = (ttProbes > 0) ? (tt.Hits * 100f / ttProbes) : 0;
+
+        print($"Nodes: {nodesSearched}, NPS: {nps:F0}, TT hit rate: {ttHitRate:F1}%");
+        print($"Search ended. searched at depth {depth - 1}");
         searchStopwatch.Stop();
         return lastBestMove;
     }
@@ -161,7 +184,7 @@ public class AI : MonoBehaviour
             return moves[0];
 
         Move ttMove = tt.GetBestMove(boardLogic.zobristKey);
-        OrderMoves(moves, movesCount, ttMove);
+        OrderMoves(moves, movesCount, ttMove, 0);
 
         Move bestMove = new Move();
 
@@ -175,6 +198,7 @@ public class AI : MonoBehaviour
             Move move = moves[i];
             MoveState state = SaveMoveState();
             boardLogic.MakeMove(move);
+            nodesSearched++;
 
             int score = -RecursiveSearch(depth - 1, -beta, -alpha, 1, true);
 
@@ -238,6 +262,7 @@ public class AI : MonoBehaviour
 
         // Probe transposition table
         ulong zobristKey = boardLogic.zobristKey;
+        ttProbes++;
         if (tt.Probe(zobristKey, (byte)depth, (short)alpha, (short)beta, ply, out short ttScore, out Move ttMove))
         {
             return ttScore; // The score is now correctly adjusted for the current depth
@@ -254,10 +279,10 @@ public class AI : MonoBehaviour
                 return 0; // stalemate
         }
 
-        //if (boardLogic.IsInCheck() && ply < MAX_PLY - 3)
-        //{
-        //    //depth += 2; // See opponent's response to the check escape
-        //}
+        if (boardLogic.IsInCheck())
+        {
+            depth += 1;
+        }
 
         if (depth == 0)
         {
@@ -306,7 +331,7 @@ public class AI : MonoBehaviour
             }
         }
 
-        OrderMoves(moves, movesCount, ttMove);
+        OrderMoves(moves, movesCount, ttMove, ply);
 
         int bestScore = -999999;
         Move bestMove = new Move();
@@ -321,8 +346,24 @@ public class AI : MonoBehaviour
             bool wasInCheck = boardLogic.IsInCheck();
             ulong keyBefore = boardLogic.zobristKey;
             boardLogic.MakeMove(move);
-            
+            nodesSearched++;
+
             int score;
+
+            //if (!boardLogic.IsInCheck() && depth <= 3 && i >= 10 && move.capturedPiece == 0 && move.flag != 2)
+            //{
+            //    RestoreMoveState(move, state);
+            //    continue;
+            //}
+            //if (!boardLogic.IsInCheck() && depth == 1 && !inCheck && move.flag != 2)
+            //{
+            //    int eval = GetCachedEvaluation();
+            //    if (eval + 200 < alpha)
+            //    {
+            //        RestoreMoveState(move, state);
+            //        continue;
+            //    }
+            //}
 
             // Conditions for applying LMR
             bool canReduce = i >= 3 &&                 // Don't reduce the first few moves
@@ -370,6 +411,16 @@ public class AI : MonoBehaviour
             {
                 // Beta cutoff - store as lower bound
                 tt.Store(zobristKey, (short)beta, (byte)depth, TTEntryType.LowerBound, move);
+
+                // Update killer moves for QUIET moves (non-captures)
+                if (move.capturedPiece == 0)
+                {
+                    UpdateKillerMove(move, ply);
+
+                    // Update history table
+                    historyTable[move.from, move.to] += depth * depth;
+                }
+
                 return beta;
             }
 
@@ -397,12 +448,13 @@ public class AI : MonoBehaviour
     }
 
 
-    private int QuiescenceSearch(int alpha, int beta, int depth = 100)
+    private int QuiescenceSearch(int alpha, int beta)
     {
         int originalAlpha = alpha;
         ulong zobristKey = boardLogic.zobristKey;
 
         // Probe transposition table
+        ttProbes++;
         if (tt.Probe(zobristKey, 0, (short)alpha, (short)beta, 0, out short ttScore, out _))
         {
             return ttScore;
@@ -414,13 +466,6 @@ public class AI : MonoBehaviour
             aborted = true;
             return GetCachedEvaluation();
             //return 9999 * (boardLogic.turn == aiColor ? -1 : 1);
-        }
-
-        // Depth limit for quiescence
-        if (depth <= 0)
-        {
-            // At maximum depth, just return static evaluation
-            return GetCachedEvaluation();
         }
 
         // Check for terminal positions first
@@ -485,8 +530,9 @@ public class AI : MonoBehaviour
 
             MoveState state = SaveMoveState();
             boardLogic.MakeMove(captureMove);
+            nodesSearched++;
 
-            int score = -QuiescenceSearch(-beta, -alpha, depth - 1);
+            int score = -QuiescenceSearch(-beta, -alpha);
 
             RestoreMoveState(captureMove, state);
 
@@ -518,6 +564,17 @@ public class AI : MonoBehaviour
 
         tt.Store(zobristKey, (short)alpha, 0, entryType, new Move());
         return alpha;
+    }
+
+    private void UpdateKillerMove(Move move, int ply)
+    {
+        // Don't store the same move twice
+        if (MovesEqual(killerMoves[ply, 0], move))
+            return;
+
+        // Shift moves: killer1 becomes killer2, new move becomes killer1
+        killerMoves[ply, 1] = killerMoves[ply, 0];
+        killerMoves[ply, 0] = move;
     }
 
     private int GetCachedEvaluation()
@@ -556,7 +613,7 @@ public class AI : MonoBehaviour
         };
     }
 
-    private void OrderMoves(Move[] moves, int moveCount, Move ttMove = new Move())
+    private void OrderMoves(Move[] moves, int moveCount, Move ttMove = new Move(), int ply = 0)
     {
         // Better check for valid TT move
         bool hasTTMove = IsValidMove(ttMove);
@@ -582,8 +639,8 @@ public class AI : MonoBehaviour
         {
             Array.Sort(moves, startIndex, moveCount - startIndex, Comparer<Move>.Create((move1, move2) =>
             {
-                int score1 = GetMoveScore(move1);
-                int score2 = GetMoveScore(move2);
+                int score1 = GetMoveScore(move1, ply);
+                int score2 = GetMoveScore(move2, ply);
                 return score2.CompareTo(score1);
             }));
         }
@@ -607,20 +664,37 @@ public class AI : MonoBehaviour
                move1.promotionPiece == move2.promotionPiece;
     }
 
-    private int GetMoveScore(Move move)
+    private int GetMoveScore(Move move, int ply)
     {
         int score = 0;
 
-        // Prioritize captures but less aggressively
+        // Prioritize captures
         if (move.capturedPiece != 0)
         {
             int victimValue = GetPieceValue(move.capturedPiece, move.to);
             int attackerValue = GetPieceValue(move.movedPiece, move.to);
-            score += victimValue - attackerValue;
+            score += victimValue * 10 - attackerValue;
+        }
+        else // Quiet move
+        {
+            // Killer moves
+            if (ply < MAX_PLY)
+            {
+                if (MovesEqual(move, killerMoves[ply, 0]))
+                {
+                    score += 2500; // First killer
+                }
+                else if (MovesEqual(move, killerMoves[ply, 1]))
+                {
+                    score += 2000; // Second killer
+                }
+            }
 
-            // Only big material gains get extra bonus
-            if (victimValue > attackerValue + 100)
-                score += 100; // Good trades only
+            // 3. History heuristic (for non-killer quiet moves)
+            if (score == 0) // Not a killer move
+            {
+                score += historyTable[move.from, move.to];
+            }
         }
 
         // Add development bonuses
@@ -635,7 +709,7 @@ public class AI : MonoBehaviour
         int pieceType = Piece.GetPieceType(move.movedPiece);
 
         // Reward moving pieces from starting squares in opening
-        if (GetGamePhase() > 20) // Opening phase
+        if (evaluator.GetGamePhase(boardLogic) > 20) // Opening phase
         {
             if (pieceType == Piece.Knight)
             {
@@ -656,23 +730,6 @@ public class AI : MonoBehaviour
         }
 
         return score;
-    }
-
-    private int GetGamePhase()
-    {
-        // Calculate material (excluding pawns and kings)
-        int material = 0;
-
-        // Count material for both sides
-        for (int color = 0; color < 2; color++)
-        {
-            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Knight - 1]) * 3;
-            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Bishop - 1]) * 3;
-            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Rook - 1]) * 5;
-            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Queen - 1]) * 9;
-        }
-
-        return material; // 0 = endgame, 78 = opening (full material)
     }
 
     private int GetPieceValue(int piece, int pos)
@@ -737,9 +794,6 @@ public class AI : MonoBehaviour
 
         // Store potential book moves with their details
         List<(Move move, string openingName, int lineLength)> candidateMoves = new List<(Move, string, int)>();
-
-        // Load all text assets from Resources/Openings folder
-        TextAsset[] openingFiles = Resources.LoadAll<TextAsset>("Openings");
 
         foreach (TextAsset openingFile in openingFiles)
         {

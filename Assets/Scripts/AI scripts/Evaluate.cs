@@ -13,40 +13,31 @@ public class Evaluate : MonoBehaviour
 
     BoardLogic boardLogic;
 
-    public int GetScore(BoardLogic passedBoardLogic)
+    public int GetScore(BoardLogic passedBoardLogic, int alpha = -999999, int beta = 999999)
     {
         boardLogic = passedBoardLogic;
-        int score = 0;
 
         int us = 0;
         int them = 1 - us;
 
-        int materialScore = CountMaterial(us) - CountMaterial(them);
-        int pieceSquareScore = EvaluatePieceSquareTables(us) - EvaluatePieceSquareTables(them);
-        int pinScore = CountPins(us) - CountPins(them);
-        int pawnScore = EvaluatePawnStructure(us) - EvaluatePawnStructure(them);
-        int kingSafetyScore = EvaluateKingSafety(us) - EvaluateKingSafety(them);
-        int mobilityScore = EvaluateMobility(us) - EvaluateMobility(them);
-        int developmentScore = EvaluateDevelopment(us) - EvaluateDevelopment(them);
+        int score = CountMaterial(us) - CountMaterial(them);
+        score += EvaluatePieceSquareTables(us) - EvaluatePieceSquareTables(them);
 
-        score += materialScore;
-        score += pieceSquareScore;
-        score += pinScore;
-        score += pawnScore;
-        score += kingSafetyScore;
-        score += mobilityScore;
-        score += developmentScore;
+        // If score is far outside alpha-beta window, return early
+        if (score + 300 < alpha || score - 300 > beta)
+            return score;
+
+        score += CountPins(us) - CountPins(them);
+        score += EvaluatePawnStructure(us) - EvaluatePawnStructure(them);
+        score += EvaluateKingSafety(us) - EvaluateKingSafety(them);
+        score += EvaluateMobility(us) - EvaluateMobility(them);
+        score += EvaluateDevelopment(us) - EvaluateDevelopment(them);
+        score += EvaluateMopUp(boardLogic);
 
         score += EvaluateConnectedRooks(us) - EvaluateConnectedRooks(them);
         score += EvaluateRookFiles(us) - EvaluateRookFiles(them);
 
         score += EvaluateBishopPair(us) - EvaluateBishopPair(them);
-
-        // Debug output
-        //Debug.Log($"Turn: {(us == 0 ? "White" : "Black")}");
-        //Debug.Log($"Material: {materialScore}, PST: {pieceSquareScore}, Pins: {pinScore}");
-        //Debug.Log($"Pawns: {pawnScore}, King: {kingSafetyScore}, Mobility: {mobilityScore}");
-        //Debug.Log($"Development: {developmentScore}, Total: {score}");
 
         return score;
     }
@@ -139,72 +130,49 @@ public class Evaluate : MonoBehaviour
         return score;
     }
 
-    private int EvaluateCentralControl(int color)
-    {
-        // Reward controlling central squares (d4, d5, e4, e5)
-        ulong centralSquares = 0x0000001818000000UL;
-
-        ulong colorBitboard = (color == 0) ? boardLogic.Wbitboard : boardLogic.Bbitboard;
-
-        int centralControl = BitScan.PopCount(boardLogic.attackedSquares[color] & centralSquares);
-        int centralOccupation = BitScan.PopCount(colorBitboard & centralSquares);
-
-        return centralControl * 3 + centralOccupation * 10;
-    }
-
     private int CountPins(int color)
     {
         int score = 0;
-        for (int pieceType = Piece.Pawn; pieceType <= Piece.Queen; pieceType++)
+        ulong pinnedPieces = 0UL;
+
+        ulong bitboardByColor = (color == 0 ? boardLogic.Wbitboard : boardLogic.Bbitboard);
+        // Find all pinned pieces for this color
+        while (bitboardByColor != 0)
         {
-            ulong pieceBitboard = boardLogic.bitboards[color, pieceType - 1];
-
-            while (pieceBitboard != 0)
+            int nextIndex = BitScan.TrailingZeroCount(bitboardByColor);
+            if (boardLogic.pinRays[nextIndex] != 0UL)
             {
-                int pos = BitScan.TrailingZeroCount(pieceBitboard);
-
-                if (boardLogic.pinRays[pos] != 0UL)
-                {
-                    // If a piece is pinned, remove a third of it's value.
-                    int normalMobility = BitScan.PopCount(boardLogic.GenerateMoves(pos, pieceType, true));
-                    int pinnedMobility = BitScan.PopCount(boardLogic.GenerateMoves(pos, pieceType));
-                    int mobilityLoss = normalMobility - pinnedMobility;
-
-                    int basePenalty = pieceType switch
-                    {
-                        Piece.Pawn => 15,
-                        Piece.Knight => 100,  // Knights lose ALL mobility when pinned
-                        Piece.Bishop => 40,
-                        Piece.Rook => 50,
-                        Piece.Queen => 60,
-                        _ => 0
-                    };
-
-                    // Add extra penalty based on mobility loss
-                    int mobilityPenalty = mobilityLoss * 3; // 3 points per lost square
-
-                    score -= basePenalty + mobilityPenalty;
-                }
-
-                pieceBitboard = BitScan.ClearBit(pieceBitboard, pos);
+                // we got a pinned piece
+                pinnedPieces |= (1UL << nextIndex);
             }
+
+            bitboardByColor &= bitboardByColor - 1;
         }
+
+        // Apply penalties based on piece type (much faster)
+        score -= BitScan.PopCount(boardLogic.bitboards[color, Piece.Knight - 1] & pinnedPieces) * 60;
+        score -= BitScan.PopCount(boardLogic.bitboards[color, Piece.Bishop - 1] & pinnedPieces) * 40;
+        score -= BitScan.PopCount(boardLogic.bitboards[color, Piece.Rook - 1] & pinnedPieces) * 100;
+        score -= BitScan.PopCount(boardLogic.bitboards[color, Piece.Queen - 1] & pinnedPieces) * 60;
 
         return score;
     }
 
-    private int GetGamePhase()
+    public int GetGamePhase(BoardLogic passedBoardLogic = null)
     {
+        if (passedBoardLogic == null)
+            passedBoardLogic = boardLogic;
+
         // Calculate material (excluding pawns and kings)
         int material = 0;
 
         // Count material for both sides
         for (int color = 0; color < 2; color++)
         {
-            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Knight - 1]) * 3;
-            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Bishop - 1]) * 3;
-            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Rook - 1]) * 5;
-            material += BitScan.PopCount(boardLogic.bitboards[color, Piece.Queen - 1]) * 9;
+            material += BitScan.PopCount(passedBoardLogic.bitboards[color, Piece.Knight - 1]) * 3;
+            material += BitScan.PopCount(passedBoardLogic.bitboards[color, Piece.Bishop - 1]) * 3;
+            material += BitScan.PopCount(passedBoardLogic.bitboards[color, Piece.Rook - 1]) * 5;
+            material += BitScan.PopCount(passedBoardLogic.bitboards[color, Piece.Queen - 1]) * 9;
         }
 
         return material; // 0 = endgame, 78 = opening (full material)
@@ -404,9 +372,9 @@ public class Evaluate : MonoBehaviour
             // Check for passed pawns
             ulong passedMask = 0UL;
             if (color == 0)
-                passedMask = fileMask[file] & (0xFFFFFFFFFFFFFFFFUL << (pos + 8));
+                passedMask = (fileMask[file] | checkIsolated[file]) & (0xFFFFFFFFFFFFFFFFUL << (pos + 8));
             else
-                passedMask = fileMask[file] & (0xFFFFFFFFFFFFFFFFUL >> (64 - pos));
+                passedMask = (fileMask[file] | checkIsolated[file]) & (0xFFFFFFFFFFFFFFFFUL >> (64 - pos));
 
             if ((enemyBitboard & passedMask) == 0UL)
                 score += 30 + (rank * 10);
@@ -456,17 +424,22 @@ public class Evaluate : MonoBehaviour
         ulong rookBitboard = boardLogic.bitboards[color, Piece.Rook - 1];
         int score = 0;
 
+        if (BitScan.PopCount(rookBitboard) < 2)
+            return 0;
+
+        ulong allPieces = boardLogic.Wbitboard | boardLogic.Bbitboard;
+
         while (rookBitboard != 0)
         {
             int pos = BitScan.TrailingZeroCount(rookBitboard);
-            int piece = Piece.Rook | ((color == 0) ? Piece.White : Piece.Black);
-            ulong rookAttacks = boardLogic.GenerateMoves(pos, piece, true);
-
-            // Check if this rook connects to another rook
-            if ((rookAttacks & (rookBitboard & ~(1UL << pos))) != 0)
-                score += 30; // Connected rooks bonus
 
             rookBitboard = BitScan.ClearBit(rookBitboard, pos);
+
+            ulong rookAttacks = Magic.GetRookAttacks(pos, allPieces);
+
+            // Check if this rook connects to another rook
+            if ((rookAttacks & rookBitboard) != 0)
+                score += 30; // Connected rooks bonus
         }
         return score;
     }

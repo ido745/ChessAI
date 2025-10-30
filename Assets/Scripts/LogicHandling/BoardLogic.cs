@@ -238,7 +238,6 @@ public class BoardLogic : MonoBehaviour
     {
         moveExecuter.MakeMove(move);
 
-
         string notation = MoveToNotation(move);
 
         // Add move number for White

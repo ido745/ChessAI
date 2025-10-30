@@ -218,6 +218,9 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
 
     public void CallAI()
     {
+        if (!boardDrawer.playingAI)
+            return;
+
         // We need to wait one frame to let the UI clear.
         StartCoroutine(CallAINextFrame());
     }

@@ -29,6 +29,7 @@ public class GraphicalBoard : MonoBehaviour
     [SerializeField] Timer timer;
     [SerializeField] GameObject GameOverPanel;
     TextMeshProUGUI endgameText;
+
     private int turn = 0;
 
     private Transform cellsHolder;
@@ -37,6 +38,7 @@ public class GraphicalBoard : MonoBehaviour
     private GameObject[] boardPieces = new GameObject[64];
     private BoardLogic boardLogic;
 
+    public bool playingAI;
 
     Dictionary<int, string> dict = new Dictionary<int, string>
     {
@@ -442,6 +444,9 @@ public class GraphicalBoard : MonoBehaviour
 
     public void CallAI()
     {
+        if (!playingAI)
+            return;
+
         // We need to wait one frame to let the UI clear.
         StartCoroutine(CallAINextFrame());
     }
