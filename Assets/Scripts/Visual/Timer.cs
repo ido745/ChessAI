@@ -21,6 +21,7 @@ public class Timer : MonoBehaviour
     private float whiteTimeRemaining;
     private float blackTimeRemaining;
     private bool isRunning = false;
+    private bool noTime = false;
 
     private void Start()
     {
@@ -48,6 +49,12 @@ public class Timer : MonoBehaviour
         else
             currentClock = blackClock;
 
+        if (noTime)
+        {
+            gameObject.SetActive(false);
+            return;
+        }
+
         isRunning = true;
     }
 
@@ -62,6 +69,7 @@ public class Timer : MonoBehaviour
 
     public void changeTime(int i)
     {
+        noTime = false;
         switch (i)
         {
             case 0:
@@ -71,12 +79,20 @@ public class Timer : MonoBehaviour
                 startingTimeInMinutes = 3;
                 break;
             case 2:
-                startingTimeInMinutes = 1;
+                noTime = true;
+                gameObject.SetActive(false);
                 break;
             default:
                 break;
         }
         Initialize();
+    }
+
+    public void flipTimers()
+    {
+        Vector2 tempPos = whiteClockObj.transform.position;
+        whiteClockObj.transform.position = blackClockObj.transform.position;
+        blackClockObj.transform.position = tempPos;
     }
 
     void Update()

@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 6ce056ee443f64445a6db77a8d09a96c
+guid: 92ebcc5e48811ca439b382132424ef2c
 TextureImporter:
   internalIDToNameTable: []
   externalObjects: {}
@@ -43,7 +43,7 @@ TextureImporter:
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 1
+  spriteMode: 2
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
@@ -72,7 +72,7 @@ TextureImporter:
     maxTextureSize: 2048
     resizeAlgorithm: 0
     textureFormat: -1
-    textureCompression: 1
+    textureCompression: 2
     compressionQuality: 50
     crunchedCompression: 0
     allowsAlphaSplitting: 0
@@ -108,7 +108,91 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites: []
+    sprites:
+    - serializedVersion: 2
+      name: TimeControlIcons-NoBG_2
+      rect:
+        serializedVersion: 2
+        x: 61
+        y: 290
+        width: 127
+        height: 124
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: e7cf075e29c434f4aa312bd7560cd6d7
+      internalID: 1363691795
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: TimeControlIcons-NoBG_3
+      rect:
+        serializedVersion: 2
+        x: 335
+        y: 279
+        width: 96
+        height: 135
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: a7d3d18bcbab65b478919c1d192766f7
+      internalID: 1674784236
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: TimeControlIcons-NoBG_4
+      rect:
+        serializedVersion: 2
+        x: 74
+        y: 78
+        width: 102
+        height: 122
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: 9152ec56f7d9a3b4bb9abf3f817e5064
+      internalID: 195309997
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: TimeControlIcons-NoBG_5
+      rect:
+        serializedVersion: 2
+        x: 306
+        y: 67
+        width: 137
+        height: 134
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: b6df1a78a826772448fe78f441560ecd
+      internalID: -745631371
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
     outline: []
     physicsShape: []
     bones: []
@@ -119,7 +203,13 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      TimeControlIcons-NoBG_0: 554560394
+      TimeControlIcons-NoBG_1: -986088178
+      TimeControlIcons-NoBG_2: 1363691795
+      TimeControlIcons-NoBG_3: 1674784236
+      TimeControlIcons-NoBG_4: 195309997
+      TimeControlIcons-NoBG_5: -745631371
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

@@ -54,7 +54,12 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         // Move the piece with the mouse
         if (isMoving)
         {
-            rectTransform.anchoredPosition += eventData.delta / canvas.scaleFactor;
+            Vector2 delta = eventData.delta / canvas.scaleFactor;
+
+            if (boardDrawer.isBoardFlipped)
+                delta = -delta;  // reverse movement direction
+
+            rectTransform.anchoredPosition += delta;
         }
     }
 
@@ -76,6 +81,8 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         int type = pieceType;
         // Only move if this is our turn
         isMoving = (type >> 4) == boardManager.turn;
+        if (!boardDrawer.gameStarted || boardDrawer.playingAI && (boardManager.turn != boardDrawer.playingColor))
+            isMoving = false;   // if we play ai, we don't want to allow to drag the pieces.
 
         if (!isMoving)
             return;
@@ -219,7 +226,11 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
     public void CallAI()
     {
         if (!boardDrawer.playingAI)
+        {
+            // We're playing a friend
+            boardDrawer.flipBoard();
             return;
+        }
 
         // We need to wait one frame to let the UI clear.
         StartCoroutine(CallAINextFrame());

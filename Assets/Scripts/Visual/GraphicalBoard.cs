@@ -30,6 +30,8 @@ public class GraphicalBoard : MonoBehaviour
     [SerializeField] GameObject GameOverPanel;
     TextMeshProUGUI endgameText;
 
+    public const float X_CENTER = 3.5f, Y_CENTER = 3.5f;
+
     private int turn = 0;
 
     private Transform cellsHolder;
@@ -38,7 +40,10 @@ public class GraphicalBoard : MonoBehaviour
     private GameObject[] boardPieces = new GameObject[64];
     private BoardLogic boardLogic;
 
-    public bool playingAI;
+    public bool playingAI = true;
+    public int playingColor = 0;
+    public bool gameStarted = false;
+    public bool isBoardFlipped = false;
 
     Dictionary<int, string> dict = new Dictionary<int, string>
     {
@@ -55,7 +60,21 @@ public class GraphicalBoard : MonoBehaviour
         GameOverPanel.SetActive(false);
         endgameText = GameOverPanel.GetComponentInChildren<TextMeshProUGUI>();
         DrawBoardUI();
+        
         boardLogic = GetComponentInChildren<BoardLogic>();
+    }
+
+    public void GameStarted()
+    {
+        gameStarted = true;
+        if (playingColor == 1 && playingAI)
+        {
+            // Flip the board, we start as black.
+            flipBoard();
+
+            CallAI();
+            print($"turn: {boardLogic.turn}");
+        }
     }
 
     public void MakeVisualMove(Move move, GameObject go = null, bool animation = true)
@@ -96,9 +115,7 @@ public class GraphicalBoard : MonoBehaviour
             boardPieces[rookFrom] = null;
             boardPieces[rookTo] = rookGO;
 
-            int x = rookTo % 8;
-            int y = rookTo / 8;
-            Vector2 anchoredPos = new Vector2((x - 4) * tileSize.x, (y - 3.5f) * tileSize.y);
+            Vector2 anchoredPos = GetBoardPositionFromIndex(rookTo);
             RectTransform rect = rookGO.GetComponent<RectTransform>();
 
             if(animation)
@@ -113,9 +130,7 @@ public class GraphicalBoard : MonoBehaviour
             // Promotion -- begin by destroying the pawn game object, and instantiating a promoted piece.
             Destroy(go);
 
-            int x = move.to % 8;
-            int y = move.to / 8;
-            Vector2 anchoredPos = new Vector2((x - 4) * tileSize.x, (y - 3.5f) * tileSize.y);
+            Vector2 anchoredPos = GetBoardPositionFromIndex(move.to);
 
             int promotedColor = Piece.GetColor(move.promotionPiece);
 
@@ -128,6 +143,9 @@ public class GraphicalBoard : MonoBehaviour
             var piecePrefab = Resources.Load<GameObject>(pieceName);
 
             GameObject instance = Instantiate(piecePrefab, this.transform);
+
+            if (playingColor == 1)
+                instance.GetComponent<RectTransform>().Rotate(0, 0, 180);
 
             var canvas = transform.GetComponentInParent<Canvas>();
             var raycaster = transform.GetComponentInParent<GraphicRaycaster>();
@@ -157,7 +175,7 @@ public class GraphicalBoard : MonoBehaviour
         }
         if (move.flag != 2)
         {
-            Vector2 newPos = new Vector2((move.to % 8 - 4) * tileSize.x, (move.to / 8 - 3.5f) * tileSize.y);
+            Vector2 newPos = GetBoardPositionFromIndex(move.to);
 
             RectTransform rect = go.GetComponent<RectTransform>();
 
@@ -187,6 +205,36 @@ public class GraphicalBoard : MonoBehaviour
             // Stalemate
             EndGame("Stalemate!");
         }
+    }
+
+    public Vector2 GetBoardPositionFromIndex(int index)
+    {
+        int x = index % 8;
+        int y = index / 8;
+        Vector2 newPos = new Vector2((x - X_CENTER) * tileSize.x, (y - Y_CENTER) * tileSize.y);
+        return newPos;
+    }
+
+    public void flipBoard()
+    {
+        RectTransform rt = GetComponent<RectTransform>();
+        rt.Rotate(0f, 0f, 180f);
+        isBoardFlipped = !isBoardFlipped;
+
+        foreach (GameObject piece in boardPieces)
+        {
+            if (piece == null) continue;
+
+            rt = piece.GetComponent<RectTransform>();
+            rt.Rotate(0f, 0f, 180f);
+        }
+
+        // Flip the timers
+        timer.flipTimers();
+
+        // Flip promotion bars
+        PromotionUI_W.Rotate(0, 0, 180);
+        PromotionUI_B.Rotate(0, 0, 180);
     }
 
     public void EndGame(string endgameMessage)
@@ -247,7 +295,7 @@ public class GraphicalBoard : MonoBehaviour
                 bool isLight = (x + y) % 2 != 0;
                 Color color = isLight ? whiteColor : blackColor;
 
-                Vector2 anchoredPos = new Vector2((x-4) * tileSize.x, (y-3.5f) * tileSize.y);
+                Vector2 anchoredPos = GetBoardPositionFromIndex(y * 8 + x);
                 GameObject square = DrawSquare(anchoredPos, color, y * 8 + x, squareSprite, cellsHolder);
                 square.tag = "Cell";
             }
@@ -297,9 +345,7 @@ public class GraphicalBoard : MonoBehaviour
             }
             GameObject instance = Instantiate(piecePrefab, this.transform);
 
-            int x = i % 8;
-            int y = i / 8;
-            Vector2 anchoredPos = new Vector2((x - 4) * tileSize.x, (y - 3.5f) * tileSize.y);
+            Vector2 anchoredPos = GetBoardPositionFromIndex(i);
 
             var canvas = transform.GetComponentInParent<Canvas>();
             var raycaster = transform.GetComponentInParent<GraphicRaycaster>();
@@ -341,16 +387,12 @@ public class GraphicalBoard : MonoBehaviour
         HideHighlight();
 
         // from square
-        int xFrom = from % 8;
-        int yFrom = from / 8;
-        Vector2 anchoredPos = new Vector2((xFrom - 4) * tileSize.x, (yFrom - 3.5f) * tileSize.y);
+        Vector2 anchoredPos = GetBoardPositionFromIndex(from);
 
         DrawSquare(anchoredPos, highlightColor, from, capturingSprite, highlightHolder, 1f, 0.5f);
 
         // to square
-        int xTo = to % 8;
-        int yTo = to / 8;
-        anchoredPos = new Vector2((xTo - 4) * tileSize.x, (yTo - 3.5f) * tileSize.y);
+        anchoredPos = GetBoardPositionFromIndex(to);
 
         DrawSquare(anchoredPos, highlightColor, to, capturingSprite, highlightHolder, 1f, 0.5f);
     }
@@ -376,9 +418,7 @@ public class GraphicalBoard : MonoBehaviour
             ulong moveBit = 1UL << to;
 
             // 2. Calculate the screen position
-            int x = to % 8;
-            int y = to / 8;
-            Vector2 anchoredPos = new Vector2((x - 4) * tileSize.x, (y - 3.5f) * tileSize.y);
+            Vector2 anchoredPos = GetBoardPositionFromIndex(to);
 
             // 3. Check if this move is a capture by seeing if the destination
             //    square is occupied by an enemy piece.
@@ -411,9 +451,7 @@ public class GraphicalBoard : MonoBehaviour
 
     public IEnumerator ShowPromotionUI(int oldIndex, int promotionIndex, GameObject pieceGO)
     {
-        int x = promotionIndex % 8;
-        int y = promotionIndex / 8;
-        Vector2 anchoredPos = new Vector2((x - 4) * tileSize.x, (y - 3.5f) * tileSize.y);
+        Vector2 anchoredPos = GetBoardPositionFromIndex(promotionIndex);
 
         RectTransform promBar = (promotionIndex / 8 == 0) ? PromotionUI_B : PromotionUI_W;
         // Move the UI to the promotion position and display it.
@@ -445,7 +483,11 @@ public class GraphicalBoard : MonoBehaviour
     public void CallAI()
     {
         if (!playingAI)
+        {
+            // We're playing a friend
+            flipBoard();
             return;
+        }
 
         // We need to wait one frame to let the UI clear.
         StartCoroutine(CallAINextFrame());

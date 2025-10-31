@@ -47,7 +47,7 @@ public class BoardLogic : MonoBehaviour
     // 1 - King, 2 - pawn, 3 - knight, 4 - bishop, 5 - rook, 6 - queen.
 
     string FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    //string FEN = "r1b2rk1/2q1bppp/p2p1n2/npp1p3/3PP3/1PP2N1P/P1B2PP1/RNBQR1K1 w - - - ";
+    //string FEN = "8/8/7k/K7/8/8/7p/8 w - - - ";
     public ulong zobristKey;
 
     public short turn = 0;     // 0 - white, 1 - black.

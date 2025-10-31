@@ -62,7 +62,7 @@ public class AI : MonoBehaviour
     [SerializeField] private int TIME_LIMIT = 3000;
     [SerializeField] private BoardLogic boardLogic;
     [SerializeField] private GraphicalBoard graphicalBoard;
-    [SerializeField] private int aiColor;
+    private int aiColor;
 
     [SerializeField] private TextMeshProUGUI InfoText;
 
