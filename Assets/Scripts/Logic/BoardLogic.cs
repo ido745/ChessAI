@@ -41,13 +41,24 @@ public class BoardLogic : MonoBehaviour
     // Hybrid approach: board to check what piece is on a certin position, bitboard for move generation etc.
     public int[] board = new int[64];
     public ulong[,] bitboards = new ulong[2, 6];   // For each color, for each type.
+                                                    // 1 - King, 2 - pawn, 3 - knight, 4 - bishop, 5 - rook, 6 - queen.
     public ulong Wbitboard;
     public ulong Bbitboard;
     public ulong enPassantSquare = 0;
-    // 1 - King, 2 - pawn, 3 - knight, 4 - bishop, 5 - rook, 6 - queen.
 
-    string FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    //string FEN = "8/8/7k/K7/8/8/7p/8 w - - - ";
+    // Helper classes
+    public readonly MoveExecuter moveExecuter;
+    public readonly MoveCalculator moveCalculator;
+
+    private readonly AttackCalculator attackCalculator;
+    private readonly MoveToNotationConverter moveToNotationConverter;
+    private GameObject boardDrawer;
+
+    public bool gameEnded;
+    public bool normalStarting = true;
+
+    private string FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    //private string FEN = "rnb1k1nr/ppp2ppp/4q3/2b1N3/8/8/PPPPQPPP/RNB1KB1R w KQkq - 0 1";
     public ulong zobristKey;
 
     public short turn = 0;     // 0 - white, 1 - black.
@@ -65,26 +76,22 @@ public class BoardLogic : MonoBehaviour
     public ulong[] pinRays = new ulong[64];
     public bool[] doubleCheck = new bool[] { false, false };
 
-    // Helper classes
-    private MoveExecuter moveExecuter;
-    private AttackCalculator attackCalculator;
-    private MoveCalculator moveCalculator;
-    private MoveToNotationConverter moveToNotationConverter;
-    GameObject boardDrawer;
-
-    public bool gameEnded;
-
     public string openingLine = "";   // PGN-style history string
     private Stack<string> openingHistory = new Stack<string>(); // for easy undo
 
-    // Start is called before the first frame update
-    private void Start()
+    public BoardLogic()
     {
-        // Initialize helper classes
+        // Initialize helper classes in constructor
         moveExecuter = new MoveExecuter(this);
         attackCalculator = new AttackCalculator(this);
         moveCalculator = new MoveCalculator(this);
         moveToNotationConverter = new MoveToNotationConverter(this);
+    }
+
+    // Start is called before the first frame update
+    private void Start()
+    {
+        normalStarting = (FEN == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
         // Set the pieces on the board
         ParseFEN(FEN);
@@ -170,74 +177,12 @@ public class BoardLogic : MonoBehaviour
             enPassantSquare = 1UL << epSquareIndex;
         }
 
-        zobristKey = GetZobristKey();
+        int enPassantFile = (enPassantSquare != 0UL) ? BitScan.TrailingZeroCount(enPassantSquare) % 8 : -1;
+        zobristKey = Zobrist.GetZobristKey(board, currentCastling, enPassantFile, turn);
     }
 
-    public ulong GetZobristKey()
+    public void addMoveToNotation(Move move)
     {
-        zobristKey = 0UL;
-
-        // Hash pieces
-        for (int i = 0; i < 64; i++)
-        {
-            if (board[i] != 0) // Only hash non-empty squares
-            {
-                int pieceType = Piece.GetPieceType(board[i]);
-                int color = Piece.IsBlack(board[i]);
-
-                zobristKey ^= Zobrist.pieceKeys[color, pieceType - 1, i];
-            }
-        }
-
-        // Hash castling rights
-        zobristKey ^= Zobrist.castlingKeys[currentCastling]; // current castling rights?
-
-        // Hash en passant square
-        if (enPassantSquare != 0UL)
-        {
-            int file = BitScan.TrailingZeroCount(enPassantSquare) % 8;
-            zobristKey ^= Zobrist.enPassantFileKey[file];
-        }
-
-        // Hash side to move
-        if (turn == 1)
-        {
-            zobristKey ^= Zobrist.blackToMoveKey;
-        }
-
-        return zobristKey;
-    }
-
-    public ulong GenerateMoves(int pos, int piece, bool ignoreOtherKing = false)
-    {
-        
-        return moveCalculator.GenerateMoves(pos, piece, ignoreOtherKing);
-    }
-
-    public int FindFlag(int pieceType, int from, int to)
-    {
-        return moveCalculator.FindFlag(pieceType, from, to);
-    }
-
-    public List<Move> GenerateListMoves(int pos, int piece)
-    {
-        return moveCalculator.GenerateListMoves(pos, piece);
-    }
-
-    public int GenerateAllMoves(Move[] moveList, int color)
-    {
-        return moveCalculator.GenerateAllMoves(moveList, color);
-    }
-
-    public int GenerateAllCaptures(Move[] moveList, int color)
-    {
-        return moveCalculator.GenerateAllCaptures(moveList, color);
-    }
-
-    public void MakeMove(Move move)
-    {
-        moveExecuter.MakeMove(move);
-
         string notation = MoveToNotation(move);
 
         // Add move number for White
@@ -251,11 +196,8 @@ public class BoardLogic : MonoBehaviour
         openingHistory.Push(notation);
     }
 
-    public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare, ulong previousZobristKey)
+    public void popMoveFromNotation()
     {
-        moveExecuter.UnmakeMove(move, previousCastlingRights, previousEnPassantSquare, previousZobristKey);
-
-
         if (openingHistory.Count > 0)
         {
             string last = openingHistory.Pop();
@@ -268,9 +210,14 @@ public class BoardLogic : MonoBehaviour
         }
     }
 
-    public int FindPinsAndChecks(int color)
+    public void FindPinsAndChecks(int color)
     {
-        return attackCalculator.FindPinsAndChecks(color);
+        attackCalculator.FindPinsAndChecks(color);
+    }
+
+    public int CheckForEndGame(int color)
+    {
+        return attackCalculator.CheckForEndGame(color);
     }
 
     public void UpdateAttacksMap(int color)

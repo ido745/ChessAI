@@ -87,11 +87,10 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         if (!isMoving)
             return;
 
-        moves = boardManager.GenerateMoves(index, pieceType);
+        moves = boardManager.moveCalculator.GenerateMoves(index, pieceType);
 
         ulong enemies = (Piece.IsBlack(pieceType) == 1) ? boardManager.Wbitboard : boardManager.Bbitboard;
         boardDrawer.ShowTargets(moves, enemies);
-        print("showing targets");
 
         preSelectedPromotionPiece = -1;
     }
@@ -102,7 +101,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         {
             return;
         }
-        print("started to move");
+
         List<RaycastResult> results = new List<RaycastResult>();
 
         // Raycast from the piece's position if we're dragged, the mouse's position if it's a click
@@ -141,7 +140,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                     break;
                 }
                 print($"valid move. going to: {newIndex}");
-                int flag = boardManager.FindFlag(pieceType, index, newIndex);
+                int flag = boardManager.moveCalculator.FindFlag(pieceType, index, newIndex);
 
                 // If the move is promotion, we would also like to update the new piece type
                 if (flag == 2)
@@ -153,7 +152,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                         int promotionPieceType = preSelectedPromotionPiece | Piece.GetColor(pieceType);
                         Move preSelectedMove = new Move(index, newIndex, pieceType, boardManager.board[newIndex], flag, promotionPieceType);
 
-                        boardManager.MakeMove(preSelectedMove);
+                        boardManager.moveExecuter.MakeMove(preSelectedMove);
                         boardDrawer.MakeVisualMove(preSelectedMove, gameObject);
 
                         index = newIndex;
@@ -171,7 +170,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                 Move move = new Move(index, newIndex, pieceType, boardManager.board[newIndex], flag);
 
 
-                boardManager.MakeMove(move);
+                boardManager.moveExecuter.MakeMove(move);
                 boardDrawer.MakeVisualMove(move, gameObject, false);
 
                 index = newIndex;
@@ -249,7 +248,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
     {
         Move move = new Move(oldIndex, promotionIndex, oldType, boardManager.board[promotionIndex], 2, newType);
 
-        boardManager.MakeMove(move);
+        boardManager.moveExecuter.MakeMove(move);
         boardDrawer.MakeVisualMove(move, gameObject);
 
         // this for visual move:  pieceType = newType;

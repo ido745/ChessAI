@@ -189,7 +189,7 @@ public class GraphicalBoard : MonoBehaviour
         timer.SwitchTurn();
 
         // Look for checkmate/stalemate
-        int checkForEndGame = boardLogic.FindPinsAndChecks(turn);
+        int checkForEndGame = boardLogic.CheckForEndGame(turn);
         if (checkForEndGame == 1)
         {
             // 1 - turn won by checkmate
@@ -473,7 +473,7 @@ public class GraphicalBoard : MonoBehaviour
 
         Move move = new Move(oldIndex, promotionIndex, previousType, boardLogic.board[promotionIndex], 2, chosenPiece | Piece.GetColor(previousType));
 
-        boardLogic.MakeMove(move);
+        boardLogic.moveExecuter.MakeMove(move);
         MakeVisualMove(move, pieceGO);
 
         // Call the ai now that we're done.

@@ -39,6 +39,40 @@ public static class Zobrist
         }
     }
 
+    public static ulong GetZobristKey(int[] board, int currentCastlingRights, int enPassantFile, int turn)
+    {
+        ulong zobristKey = 0UL;
+
+        // Hash pieces
+        for (int i = 0; i < 64; i++)
+        {
+            if (board[i] != 0) // Only hash non-empty squares
+            {
+                int pieceType = Piece.GetPieceType(board[i]);
+                int color = Piece.IsBlack(board[i]);
+
+                zobristKey ^= pieceKeys[color, pieceType - 1, i];
+            }
+        }
+
+        // Hash current castling rights
+        zobristKey ^= castlingKeys[currentCastlingRights];
+
+        // Hash en passant square
+        if (enPassantFile != -1)
+        {
+            zobristKey ^= enPassantFileKey[enPassantFile];
+        }
+
+        // Hash side to move
+        if (turn == 1)
+        {
+            zobristKey ^= blackToMoveKey;
+        }
+
+        return zobristKey;
+    }
+
     private static ulong NextULong(System.Random rng)
     {
         byte[] buffer = new byte[8];

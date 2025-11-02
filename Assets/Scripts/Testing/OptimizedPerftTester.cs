@@ -25,12 +25,12 @@ public class OptimizedPerftTester : MonoBehaviour
         //    "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
         //    "Fourth Position",
         //    new long[] { 1, 6, 264, 9467, 422333, 15833292 }
-        //),
+        //)
         //new TestPosition(
         //    "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
         //    "Fifth Position",
         //    new long[] { 1, 44, 1486, 62379, 2103487, 89941194 }
-        //)
+        //),
         //new TestPosition(
         //    "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
         //    "Sixth Position",
@@ -188,7 +188,21 @@ public class OptimizedPerftTester : MonoBehaviour
         {
             Move move = moves[i];
             MoveState state = SaveMoveState();
-            boardLogic.MakeMove(move);
+
+            ulong keyBefore = boardLogic.zobristKey;
+            boardLogic.moveExecuter.MakeMove(move);
+
+            ulong keyAfterMove = boardLogic.zobristKey;
+            int epFile = (boardLogic.enPassantSquare != 0UL) ? BitScan.TrailingZeroCount(boardLogic.enPassantSquare) % 8 : -1;
+            ulong recalculatedKey = Zobrist.GetZobristKey(boardLogic.board, boardLogic.currentCastling, epFile, boardLogic.turn);
+
+            if (keyAfterMove != recalculatedKey)
+            {
+                UnityEngine.Debug.LogError($"ZOBRIST KEY MISMATCH after move {FormatMove(move)}!");
+                UnityEngine.Debug.LogError($"  Incremental: {keyAfterMove}");
+                UnityEngine.Debug.LogError($"  Recalculated: {recalculatedKey}");
+                UnityEngine.Debug.LogError($"  Depth: {depth}");
+            }
 
             long nodeCount;
             if (depth == 1)
@@ -264,7 +278,21 @@ public class OptimizedPerftTester : MonoBehaviour
         {
             Move move = moves[i];
             MoveState state = SaveMoveState();
-            boardLogic.MakeMove(move);
+
+            ulong keyBefore = boardLogic.zobristKey;
+            boardLogic.moveExecuter.MakeMove(move);
+
+            ulong keyAfterMove = boardLogic.zobristKey;
+            int epFile = (boardLogic.enPassantSquare != 0UL) ? BitScan.TrailingZeroCount(boardLogic.enPassantSquare) % 8 : -1;
+            ulong recalculatedKey = Zobrist.GetZobristKey(boardLogic.board, boardLogic.currentCastling, epFile, boardLogic.turn);
+
+            if (keyAfterMove != recalculatedKey)
+            {
+                UnityEngine.Debug.LogError($"ZOBRIST KEY MISMATCH after move {FormatMove(move)}!");
+                UnityEngine.Debug.LogError($"  Incremental: {keyAfterMove}");
+                UnityEngine.Debug.LogError($"  Recalculated: {recalculatedKey}");
+                UnityEngine.Debug.LogError($"  Depth: {depth}");
+            }
 
             PerftResult subResult = PerftRecursive(depth - 1);
             result.nodes += subResult.nodes;
@@ -302,7 +330,7 @@ public class OptimizedPerftTester : MonoBehaviour
     private void RestoreMoveState(Move move, MoveState state)
     {
         // 1. Unmake the physical move on the board
-        boardLogic.GetComponent<BoardLogic>().UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
+        boardLogic.GetComponent<BoardLogic>().moveExecuter.UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
 
         // 2. Restore the entire derived state from the saved struct.
         // This is now the single point of state restoration.
@@ -372,7 +400,7 @@ public class OptimizedPerftTester : MonoBehaviour
                 }
 
                 // Get the bitboard of all legal destination squares for this piece
-                ulong validDestinations = boardLogic.GenerateMoves(from, piece);
+                ulong validDestinations = boardLogic.moveCalculator.GenerateMoves(from, piece);
 
                 // Loop through each valid destination square
                 while (validDestinations != 0)
@@ -382,7 +410,7 @@ public class OptimizedPerftTester : MonoBehaviour
 
                     // Determine move details
                     int capturedPiece = boardLogic.board[to]; // Will be 0 if it's not a capture
-                    int flag = boardLogic.FindFlag(piece, from, to); // Use the actual piece, not pieceType
+                    int flag = boardLogic.moveCalculator.FindFlag(piece, from, to); // Use the actual piece, not pieceType
 
                     // --- Handle Promotions ---
                     if (flag == (int)MoveFlag.Promotion)

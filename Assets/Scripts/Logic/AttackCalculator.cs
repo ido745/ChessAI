@@ -1,3 +1,4 @@
+using System.Drawing;
 using UnityEngine;
 using static BitScan;
 
@@ -10,14 +11,14 @@ public class AttackCalculator
         this.boardLogic = boardLogic;
     }
 
-    // Fixed FindPinsAndChecks method with proper loop termination
-    public int FindPinsAndChecks(int color)
+    public void FindPinsAndChecks(int color)
     {
         boardLogic.pinRays = new ulong[64];
         boardLogic.checkMap = 0UL;
         boardLogic.doubleCheck[color] = false;
         int kingPos = TrailingZeroCount(boardLogic.bitboards[color, Piece.King - 1]);
 
+        // Look at pieces that can pin straight ahead and diagonally.
         ulong rookOrQueen = boardLogic.bitboards[1 - color, Piece.Rook - 1] | boardLogic.bitboards[1 - color, Piece.Queen - 1];
         ulong bishopOrQueen = boardLogic.bitboards[1 - color, Piece.Bishop - 1] | boardLogic.bitboards[1 - color, Piece.Queen - 1];
 
@@ -76,8 +77,8 @@ public class AttackCalculator
             else if (num_blockers == 1)
             {
                 // There is exactly one piece blocking. We must check its color.
-                bool is_blocker_friendly = (blockers_on_ray & friendly) != 0;
-
+                bool is_blocker_friendly = ((blockers_on_ray & friendly) != 0UL);
+                
                 if (!is_blocker_friendly)
                 {
                     // Not a check, not a pin.
@@ -108,7 +109,10 @@ public class AttackCalculator
                 }
             }
         }
+    }
 
+    public int CheckForEndGame(int color)
+    {
         if (IsStalemate(color))
         {
             boardLogic.gameEnded = true;
@@ -139,7 +143,7 @@ public class AttackCalculator
                 continue;
             }
 
-            map |= boardLogic.GenerateMoves(i, piece, true);
+            map |= boardLogic.moveCalculator.GenerateMoves(i, piece, true);
         }
 
         //boardLogic.transform.parent.GetComponent<GraphicalBoard>().DebugShowSquares(map, Color.cyan);
@@ -157,7 +161,7 @@ public class AttackCalculator
             {
                 int index = BitScan.TrailingZeroCount(currentBitboard);
 
-                if (boardLogic.GenerateMoves(index, pieceType | 0b01000 << color) != 0)
+                if (boardLogic.moveCalculator.GenerateMoves(index, pieceType | 0b01000 << color) != 0)
                 {
                     return false;
                 }

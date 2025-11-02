@@ -48,7 +48,7 @@ public class MoveExecuter
         HandleSpecialMove(move);
 
         // 5. Update en passant square
-        if (move.flag == 4) // Double pawn move
+        if (move.flag == (int)MoveFlag.DoublePawnMove) // Double pawn move
         {
             boardLogic.enPassantSquare = 1UL << ((move.from + move.to) / 2);
         }
@@ -73,6 +73,8 @@ public class MoveExecuter
         if (boardLogic.enPassantSquare != 0UL)
             boardLogic.zobristKey ^= Zobrist.enPassantFileKey[BitScan.TrailingZeroCount(boardLogic.enPassantSquare) % 8];
         boardLogic.zobristKey ^= Zobrist.castlingKeys[boardLogic.currentCastling];
+
+        boardLogic.addMoveToNotation(move);
     }
 
     private void UpdateColorOccupancy(int color, int from, int to)
@@ -171,13 +173,6 @@ public class MoveExecuter
             boardLogic.currentCastling &= ~0b0010;
         if (bKingSideBlocked)
             boardLogic.currentCastling &= ~0b1000;
-
-        // Look for enemy pieces in the way
-
-        //Debug.Log("Current castling rights:");
-        //PrintBinary((ulong)boardLogic.currentCastling);
-        //Debug.Log("Castling rights:");
-        //PrintBinary((ulong)boardLogic.castlingRights);
 
     }
     private void HandleSpecialMove(Move move)
@@ -306,17 +301,17 @@ public class MoveExecuter
         int capturedPieceType = Piece.GetPieceType(capturedPiece);
 
         // Handle special moves first
-        switch (flag)
+        switch ((MoveFlag)flag)
         {
-            case 1: // Castling
+            case MoveFlag.Castling: // Castling
                 UnmakeCastling(fromSquare, toSquare, color);
                 break;
 
-            case 2: // Promotion
+            case MoveFlag.Promotion: // Promotion
                 UnmakePromotion(fromSquare, toSquare, movedPiece, capturedPiece, promotionPiece);
                 break;
 
-            case 3: // En passant
+            case MoveFlag.EnPassant: // En passant
                 UnmakeEnPassant(fromSquare, toSquare, movedPiece);
                 break;
 
@@ -329,6 +324,8 @@ public class MoveExecuter
         boardLogic.turn = (short)(1 - boardLogic.turn);
         boardLogic.castlingRights = previousCastlingRights;
         boardLogic.enPassantSquare = previousEnPassantSquare;
+
+        boardLogic.popMoveFromNotation();
     }
 
     private void UnmakeNormalMove(int fromSquare, int toSquare, int movedPiece, int capturedPiece)

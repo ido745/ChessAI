@@ -98,9 +98,9 @@ public class AI : MonoBehaviour
         Array.Clear(historyTable, 0, historyTable.Length);
 
         Move? bookMove = TryBookMove();
-        if (bookMove != null)
+        if (bookMove != null && boardLogic.normalStarting)
         {
-            boardLogic.MakeMove((Move)bookMove);
+            boardLogic.moveExecuter.MakeMove((Move)bookMove);
             graphicalBoard.MakeVisualMove((Move)bookMove);
             return;
         }
@@ -111,7 +111,7 @@ public class AI : MonoBehaviour
         // Back on main thread - safe to use Unity APIs
         if (IsValidMove(bestMove))
         {
-            boardLogic.MakeMove(bestMove);
+            boardLogic.moveExecuter.MakeMove(bestMove);
             graphicalBoard.MakeVisualMove(bestMove);
             print($"Final move: {boardLogic.MoveToSAN(bestMove)} - Score: {bestScoreForDebug}");
         }
@@ -133,6 +133,9 @@ public class AI : MonoBehaviour
         searchStopwatch.Start();
 
         Move lastBestMove = new Move();
+
+        int scoreForDebug = evaluator.GetScore(boardLogic);
+        print($"STATIC EVAL: {scoreForDebug}");
 
         int depth = 1;
         bestScoreForDebug = -999999;
@@ -166,7 +169,7 @@ public class AI : MonoBehaviour
     {
         if (aborted) return new Move();
         Move[] moves = new Move[256];
-        int movesCount = boardLogic.GenerateAllMoves(moves, boardLogic.turn);
+        int movesCount = boardLogic.moveCalculator.GenerateAllMoves(moves, boardLogic.turn);
 
         if (movesCount == 0)
         {
@@ -197,7 +200,7 @@ public class AI : MonoBehaviour
         {
             Move move = moves[i];
             MoveState state = SaveMoveState();
-            boardLogic.MakeMove(move);
+            boardLogic.moveExecuter.MakeMove(move);
             nodesSearched++;
 
             int score = -RecursiveSearch(depth - 1, -beta, -alpha, 1, true);
@@ -269,7 +272,7 @@ public class AI : MonoBehaviour
         }
 
         Move[] moves = new Move[256];
-        int movesCount = boardLogic.GenerateAllMoves(moves, boardLogic.turn);
+        int movesCount = boardLogic.moveCalculator.GenerateAllMoves(moves, boardLogic.turn);
 
         if (movesCount == 0)
         {
@@ -345,7 +348,7 @@ public class AI : MonoBehaviour
             MoveState state = SaveMoveState();
             bool wasInCheck = boardLogic.IsInCheck();
             ulong keyBefore = boardLogic.zobristKey;
-            boardLogic.MakeMove(move);
+            boardLogic.moveExecuter.MakeMove(move);
             nodesSearched++;
 
             int score;
@@ -470,7 +473,7 @@ public class AI : MonoBehaviour
 
         // Check for terminal positions first
         Move[] allMoves = new Move[256];
-        int allMovesCount = boardLogic.GenerateAllMoves(allMoves, boardLogic.turn);
+        int allMovesCount = boardLogic.moveCalculator.GenerateAllMoves(allMoves, boardLogic.turn);
 
         if (allMovesCount == 0)
         {
@@ -504,7 +507,7 @@ public class AI : MonoBehaviour
 
         // Generate only capture moves
         Move[] captures = new Move[128];
-        int captureCount = boardLogic.GenerateAllCaptures(captures, boardLogic.turn);
+        int captureCount = boardLogic.moveCalculator.GenerateAllCaptures(captures, boardLogic.turn);
 
         // Sort captures by MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
         if (captureCount > 1)
@@ -529,7 +532,7 @@ public class AI : MonoBehaviour
             }
 
             MoveState state = SaveMoveState();
-            boardLogic.MakeMove(captureMove);
+            boardLogic.moveExecuter.MakeMove(captureMove);
             nodesSearched++;
 
             int score = -QuiescenceSearch(-beta, -alpha);
@@ -776,7 +779,7 @@ public class AI : MonoBehaviour
     private void RestoreMoveState(Move move, MoveState state)
     {
         // 1. Unmake the physical move on the board
-        boardLogic.UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
+        boardLogic.moveExecuter.UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
 
         // 2. Restore the entire derived state from the saved struct.
         // This is now the single point of state restoration.
@@ -856,7 +859,7 @@ public class AI : MonoBehaviour
     private Move? FindMoveFromSAN(string san)
     {
         Move[] moves = new Move[256];
-        int movesCount = boardLogic.GenerateAllMoves(moves, boardLogic.turn);
+        int movesCount = boardLogic.moveCalculator.GenerateAllMoves(moves, boardLogic.turn);
 
         for (int i = 0; i < movesCount; i++)
         {

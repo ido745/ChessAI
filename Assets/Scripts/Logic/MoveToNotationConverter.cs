@@ -113,7 +113,7 @@ public class MoveToNotationConverter
         {
             string disambiguation = "";
             Move[] moves = new Move[256];
-            int count = boardLogic.GenerateAllMoves(moves, Piece.IsBlack(piece));
+            int count = boardLogic.moveCalculator.GenerateAllMoves(moves, Piece.IsBlack(piece));
 
             foreach (var m in moves)
             {

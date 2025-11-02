@@ -171,7 +171,7 @@ public class PerftTester : MonoBehaviour
         foreach (Move move in moves)
         {
             BoardState state = SaveBoardState();
-            boardLogic.MakeMove(move);
+            boardLogic.moveExecuter.MakeMove(move);
 
             long nodeCount;
             if (depth == 1)
@@ -244,7 +244,7 @@ public class PerftTester : MonoBehaviour
         foreach (Move move in moves)
         {
             BoardState state = SaveBoardState();
-            boardLogic.MakeMove(move);
+            boardLogic.moveExecuter.MakeMove(move);
 
             PerftResult subResult = PerftRecursive(depth - 1);
             result.nodes += subResult.nodes;
@@ -301,7 +301,7 @@ public class PerftTester : MonoBehaviour
             if (pieceColor != boardLogic.turn) continue;
 
             // Generate moves for this piece
-            List<Move> pieceMoves = boardLogic.GenerateListMoves(square, piece);
+            List<Move> pieceMoves = boardLogic.moveCalculator.GenerateListMoves(square, piece);
 
             // For promotions, generate all possible promotion pieces
             foreach (Move move in pieceMoves)
