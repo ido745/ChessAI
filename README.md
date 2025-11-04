@@ -39,7 +39,7 @@ Responsible for searching positions and selecting the best move within a given t
 
 ## ⚡ Move Generation
 
-Move generation is implemented with the efficient **Magic Bitboards** technique, enabling O(1) lookup for sliding piece attacks.
+Move generation is implemented with the efficient **Magic Bitboards** technique, enabling O(1) lookup time.
 
 > 🧠 *Magic Bitboards are a method to transform board occupancy into fast, pre-computed attack sets using bitwise operations and “magic” hash multipliers.*  
 Learn more at: [ChessProgramming.org/Magic_Bitboards](https://www.chessprogramming.org/Magic_Bitboards)
