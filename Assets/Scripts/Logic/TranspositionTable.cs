@@ -4,6 +4,36 @@ using System.Collections.Generic;
 using UnityEngine;
 using static AI;
 
+// Transposition table entry structure
+public struct TTEntry
+{
+    public ulong zobristKey;    // Full 64-bit key for verification
+    public short score;         // Evaluation score
+    public byte depth;          // Search depth
+    public TTEntryType type;    // Type of bound
+    public Move bestMove;       // Best move found
+    public byte age;            // For replacement strategy
+
+    public TTEntry(ulong key, short score, byte depth, TTEntryType type, Move bestMove, byte age)
+    {
+        this.zobristKey = key;
+        this.score = score;
+        this.depth = depth;
+        this.type = type;
+        this.bestMove = bestMove;
+        this.age = age;
+    }
+
+    public bool IsEmpty => zobristKey == 0;
+}
+
+public enum TTEntryType : byte
+{
+    Exact = 0,    // PV-node - exact score
+    LowerBound = 1, // Beta cutoff - score is at least this value (fail-high)
+    UpperBound = 2  // Alpha cutoff - score is at most this value (fail-low)
+}
+
 public class TranspositionTable
 {
     private TTEntry[] table;

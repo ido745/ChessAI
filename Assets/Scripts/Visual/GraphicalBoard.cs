@@ -32,8 +32,6 @@ public class GraphicalBoard : MonoBehaviour
 
     public const float X_CENTER = 3.5f, Y_CENTER = 3.5f;
 
-    private int turn = 0;
-
     private Transform cellsHolder;
     private Transform targetsHolder;
     private Transform highlightHolder;
@@ -44,6 +42,8 @@ public class GraphicalBoard : MonoBehaviour
     public int playingColor = 0;
     public bool gameStarted = false;
     public bool isBoardFlipped = false;
+
+    const float ANIMATION_TIME = 0.13f;
 
     Dictionary<int, string> dict = new Dictionary<int, string>
     {
@@ -119,7 +119,7 @@ public class GraphicalBoard : MonoBehaviour
             RectTransform rect = rookGO.GetComponent<RectTransform>();
 
             if(animation)
-                StartCoroutine(SmoothMove(rookGO, anchoredPos, 0.1f));
+                StartCoroutine(SmoothMove(rookGO, anchoredPos, ANIMATION_TIME));
             else
                 rect.anchoredPosition = anchoredPos;
             rookGO.GetComponent<BasePiece>().index = rookTo;
@@ -180,7 +180,7 @@ public class GraphicalBoard : MonoBehaviour
             RectTransform rect = go.GetComponent<RectTransform>();
 
             if (animation)
-                StartCoroutine(SmoothMove(go, newPos, 0.1f));
+                StartCoroutine(SmoothMove(go, newPos, ANIMATION_TIME));
             else
                 rect.anchoredPosition = newPos;
             go.GetComponent<BasePiece>().index = move.to;
@@ -189,12 +189,12 @@ public class GraphicalBoard : MonoBehaviour
         timer.SwitchTurn();
 
         // Look for checkmate/stalemate
-        int checkForEndGame = boardLogic.CheckForEndGame(turn);
+        int checkForEndGame = boardLogic.CheckForEndGame(boardLogic.turn);
         if (checkForEndGame == 1)
         {
             // 1 - turn won by checkmate
 
-            if (turn == 1)
+            if (boardLogic.turn == 1)
                 EndGame("Game over - white won!");
             else
                 EndGame("Game over - black won!");
@@ -204,6 +204,39 @@ public class GraphicalBoard : MonoBehaviour
         {
             // Stalemate
             EndGame("Stalemate!");
+        }
+        if (checkForEndGame == 3)
+        {
+            EndGame("Draw!");
+
+            if (boardLogic.halfMoveClock >= 100)
+            {
+                print("Draw made by 50 move rule");
+            }
+            else if (boardLogic.positionHistory != null && boardLogic.positionHistory.Count > 0)
+            {
+                ulong currentKey = boardLogic.zobristKey;
+                int count = 0; // Don't start at 1, count only from history
+
+                // Count occurrences in history (NOT including current position yet)
+                foreach (ulong key in boardLogic.positionHistory)
+                {
+                    if (key == currentKey)
+                        count++;
+                }
+
+                // If we've seen this position 2 or more times before, 
+                // this would be the 3rd occurrence
+                if (count >= 2)
+                {
+                    print("Draw made by repetition");
+                }
+            }
+            else
+            {
+                print("Draw by insufficient material");
+            }
+
         }
     }
 
@@ -217,6 +250,8 @@ public class GraphicalBoard : MonoBehaviour
 
     public void flipBoard()
     {
+        // Rotate entire board by 180, then each of the pieces by 180.
+        // This will result in the effect of opposite sides
         RectTransform rt = GetComponent<RectTransform>();
         rt.Rotate(0f, 0f, 180f);
         isBoardFlipped = !isBoardFlipped;
@@ -323,8 +358,19 @@ public class GraphicalBoard : MonoBehaviour
         return square;
     }
 
+    public void ClearPieces()
+    {
+        foreach (GameObject pieceGO in boardPieces)
+        {
+            Destroy(pieceGO);
+        }
+    }
+
     public void DrawPieces(int[] board)
     {
+        GameOverPanel.SetActive(false);
+        ClearPieces();
+        boardPieces = new GameObject[64];
         for (int i = 0; i < 64; i++)
         {
             int pieceType = board[i] % 8;

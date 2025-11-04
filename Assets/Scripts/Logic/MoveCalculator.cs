@@ -142,7 +142,17 @@ public class MoveCalculator
         // Iterate through each piece type, from Pawn to King
         for (int pieceType = Piece.King; pieceType <= Piece.Queen; pieceType++)
         {
-            ulong pieceBitboard = boardLogic.bitboards[color, pieceType - 1];
+            ulong pieceBitboard;
+            try
+            {
+                pieceBitboard = boardLogic.bitboards[color, pieceType - 1];
+            }
+            catch (System.Exception)
+            {
+                Debug.Log($"color: {color}, pieceType: {pieceType}");
+                throw;
+            }
+            
 
             // Loop through each piece of the current type on the board
             while (pieceBitboard != 0)

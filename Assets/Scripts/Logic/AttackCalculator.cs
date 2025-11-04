@@ -113,14 +113,23 @@ public class AttackCalculator
 
     public int CheckForEndGame(int color)
     {
+        if (IsDraw())
+        {
+            boardLogic.gameEnded = true;
+            boardLogic.winner = -1;
+            return 3;
+        }
         if (IsStalemate(color))
         {
+            // this color has no moves to make. he's either stalemated or checkmated.
             boardLogic.gameEnded = true;
             if (boardLogic.checkMap != 0)
             {
+                boardLogic.winner = 1 - color;
                 OnCheckmate(color);
                 return 1;
             }
+            boardLogic.winner = -1;
             OnStalemate();
             return 2;
         }
@@ -173,6 +182,93 @@ public class AttackCalculator
         // Stalemate was found
         return true;
     }
+
+    public bool IsDraw()
+    {
+        // --- 1. Fifty-Move Rule ---
+        if (boardLogic.halfMoveClock >= 100)
+        {
+            return true;
+        }
+
+        // --- 2. Threefold Repetition ---
+        if (boardLogic.positionHistory != null && boardLogic.positionHistory.Count > 0)
+        {
+            ulong currentKey = boardLogic.zobristKey;
+            int count = 0; // Don't start at 1, count only from history
+
+            // Count occurrences in history (NOT including current position yet)
+            foreach (ulong key in boardLogic.positionHistory)
+            {
+                if (key == currentKey)
+                    count++;
+            }
+
+            if (count >= 3)
+            {
+                return true;
+            }
+        }
+
+        // --- 3. Insufficient Mating Material ---
+        if (HasInsufficientMaterial())
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool HasInsufficientMaterial()
+    {
+        // Count pieces for both sides
+        int whiteBishops = BitScan.PopCount(boardLogic.bitboards[0, Piece.Bishop - 1]);
+        int blackBishops = BitScan.PopCount(boardLogic.bitboards[1, Piece.Bishop - 1]);
+        int whiteKnights = BitScan.PopCount(boardLogic.bitboards[0, Piece.Knight - 1]);
+        int blackKnights = BitScan.PopCount(boardLogic.bitboards[1, Piece.Knight - 1]);
+        int whiteRooks = BitScan.PopCount(boardLogic.bitboards[0, Piece.Rook - 1]);
+        int blackRooks = BitScan.PopCount(boardLogic.bitboards[1, Piece.Rook - 1]);
+        int whiteQueens = BitScan.PopCount(boardLogic.bitboards[0, Piece.Queen - 1]);
+        int blackQueens = BitScan.PopCount(boardLogic.bitboards[1, Piece.Queen - 1]);
+        int whitePawns = BitScan.PopCount(boardLogic.bitboards[0, Piece.Pawn - 1]);
+        int blackPawns = BitScan.PopCount(boardLogic.bitboards[1, Piece.Pawn - 1]);
+
+        // Any pawns, rooks, or queens instantly means sufficient material.
+        if (whitePawns + blackPawns + whiteRooks + blackRooks + whiteQueens + blackQueens > 0)
+            return false;
+
+        // K vs K
+        if (whiteBishops + whiteKnights + blackBishops + blackKnights == 0)
+            return true;
+
+        // K+B vs K
+        if ((whiteBishops == 1 && whiteKnights == 0 && blackBishops + blackKnights == 0) ||
+            (blackBishops == 1 && blackKnights == 0 && whiteBishops + whiteKnights == 0))
+            return true;
+
+        // K+N vs K
+        if ((whiteKnights == 1 && whiteBishops == 0 && blackBishops + blackKnights == 0) ||
+            (blackKnights == 1 && blackBishops == 0 && whiteBishops + whiteKnights == 0))
+            return true;
+
+        // K+B vs K+B (same color bishops)
+        if (whiteBishops == 1 && blackBishops == 1 && whiteKnights + blackKnights == 0)
+        {
+            int whiteBishopSquare = BitScan.TrailingZeroCount(boardLogic.bitboards[0, Piece.Bishop - 1]);
+            int blackBishopSquare = BitScan.TrailingZeroCount(boardLogic.bitboards[1, Piece.Bishop - 1]);
+
+            // Check if bishops are on same color squares
+            // A square is light if (rank + file) is even
+            bool whiteOnLight = ((whiteBishopSquare / 8 + whiteBishopSquare % 8) % 2 == 0);
+            bool blackOnLight = ((blackBishopSquare / 8 + blackBishopSquare % 8) % 2 == 0);
+
+            if (whiteOnLight == blackOnLight)
+                return true;
+        }
+
+        return false;
+    }
+
 
     private void OnCheckmate(int checkmatedColor)
     {

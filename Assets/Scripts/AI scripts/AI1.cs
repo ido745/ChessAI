@@ -7,20 +7,7 @@ using System.Threading.Tasks;
 using TMPro;
 using System.Collections;
 
-public struct MoveState
-{
-    public ulong zobristKey;
-    public ulong enPassantSquare;
-    public int castlingRights;
-    public int currentCastling;
-    public ulong checkMap;
-    public ulong[] pinRays;
-    public bool[] doubleCheck;
-    public ulong[] attackedSquares;
-    public bool gameEnded;
-}
-
-public class AI : MonoBehaviour
+public class AI1 : MonoBehaviour
 {
     const int MAX_PLY = 128;    // raised to 128 instead of 20
 
@@ -36,7 +23,7 @@ public class AI : MonoBehaviour
     private TranspositionTable tt = new TranspositionTable(64); // 64 MB table
     private Dictionary<ulong, int> evalCache = new Dictionary<ulong, int>(); // Cached evaluations for positions
 
-    private Evaluate evaluator;
+    private Evaluate1 evaluator;
     [SerializeField] private int TIME_LIMIT = 1000;
     [SerializeField] private BoardLogic boardLogic;
     [SerializeField] private GraphicalBoard graphicalBoard;
@@ -62,7 +49,7 @@ public class AI : MonoBehaviour
     // Start is called before the first frame update
     private void Start()
     {
-        evaluator = GetComponent<Evaluate>();
+        evaluator = GetComponent<Evaluate1>();
         openingFiles = Resources.LoadAll<TextAsset>("Openings");
 
         StartCoroutine(UpdateDepthTextCoroutine());
@@ -106,7 +93,7 @@ public class AI : MonoBehaviour
         isThinking = true;
         evalCache.Clear();
         aiColor = boardLogic.turn;
-    
+
         tt.NextAge();
 
         // Clear history table for new search
@@ -161,7 +148,7 @@ public class AI : MonoBehaviour
         int depth = 1;
         bestScoreForDebug = -999999;
         int previousScore = 0;
-    
+
         while (!aborted && searchStopwatch.ElapsedMilliseconds < searchTimeLimitMs)
         {
             currentSearchDepth = depth;
@@ -1051,8 +1038,8 @@ public class AI : MonoBehaviour
             string pvString = GetPVLine();
             depthText.text = $"Depth: {currentSearchDepth}\n" +
                 $"SelDepth: {seldepth}";
-                //$"Eval: {FormatScore(bestScoreForDebug)}\n" +
-                //$"PV: {pvString}";
+            //$"Eval: {FormatScore(bestScoreForDebug)}\n" +
+            //$"PV: {pvString}";
 
             yield return new WaitForSeconds(0.1f);
         }

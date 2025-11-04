@@ -54,11 +54,12 @@ public class BoardLogic : MonoBehaviour
     private readonly MoveToNotationConverter moveToNotationConverter;
     private GameObject boardDrawer;
 
-    public bool gameEnded;
+    public bool gameEnded = false;
+    public int winner;
     public bool normalStarting = true;
 
     private string FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    //private string FEN = "rnb1k1nr/ppp2ppp/4q3/2b1N3/8/8/PPPPQPPP/RNB1KB1R w KQkq - 0 1";
+    //private string FEN = "8/8/8/6q1/4k3/8/8/5K2 w KQkq - 0 1";
     public ulong zobristKey;
 
     public short turn = 0;     // 0 - white, 1 - black.
@@ -78,6 +79,9 @@ public class BoardLogic : MonoBehaviour
 
     public string openingLine = "";   // PGN-style history string
     private Stack<string> openingHistory = new Stack<string>(); // for easy undo
+
+    public int halfMoveClock = 0; // Counts moves for 50-move rule
+    public List<ulong> positionHistory = new List<ulong>();
 
     public BoardLogic()
     {
@@ -225,6 +229,32 @@ public class BoardLogic : MonoBehaviour
         attackCalculator.UpdateAttacksMap(color);
     }
 
+    public void ResetBoard()
+    {
+        turn = 0;
+        gameEnded = false;
+
+        castlingRights = 15; 
+        currentCastling = 15;
+
+        attackedSquares = new ulong[2];
+
+        checkMap = 0UL;
+        pinRays = new ulong[64];
+        doubleCheck = new bool[] { false, false };
+
+        openingLine = "";
+        openingHistory = new Stack<string>();
+
+        halfMoveClock = 0;
+        positionHistory = new List<ulong>();
+        normalStarting = true;
+        ParseFEN(FEN);
+
+        attackCalculator.UpdateAttacksMap(0);
+        attackCalculator.UpdateAttacksMap(1);
+    }
+
     public bool IsInCheck()
     {
         // Checks if the player who's turn it is to play is in check
@@ -233,7 +263,7 @@ public class BoardLogic : MonoBehaviour
 
     public void EndGame()
     {
-        turn = -1;
+        gameEnded = true;
     }
 
     public void UpdateCastlingRights()
@@ -270,6 +300,14 @@ public class BoardLogic : MonoBehaviour
             // No queen side castling for white
             castlingRights &= ~0b0001;
         }
+    }
+
+    public bool IsDraw()
+    {
+        int checkForWhite = CheckForEndGame(0);
+        int checkForBlack = CheckForEndGame(1);
+        
+        return (checkForWhite == 3 || checkForWhite == 2 || checkForBlack == 2);
     }
 
     private string MoveToNotation(Move move)

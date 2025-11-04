@@ -15,6 +15,11 @@ public class MoveExecuter
 
     public void MakeMove(Move move)
     {
+        if (move.capturedPiece == 0 && move.movedPiece != Piece.Pawn)
+            boardLogic.halfMoveClock++;
+        else
+            boardLogic.halfMoveClock = 0;
+
         // Xor the blackTurn, since we switched turns
         boardLogic.zobristKey ^= Zobrist.blackToMoveKey;
         // Xor out the old en passant and castling rights.
@@ -75,6 +80,7 @@ public class MoveExecuter
         boardLogic.zobristKey ^= Zobrist.castlingKeys[boardLogic.currentCastling];
 
         boardLogic.addMoveToNotation(move);
+        boardLogic.positionHistory.Add(boardLogic.zobristKey);
     }
 
     private void UpdateColorOccupancy(int color, int from, int to)
@@ -286,6 +292,11 @@ public class MoveExecuter
 
     public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare, ulong previousZobristKey)
     {
+        if (move.capturedPiece == 0 && move.movedPiece != Piece.Pawn)
+            boardLogic.halfMoveClock--;
+
+        boardLogic.positionHistory.RemoveAt(boardLogic.positionHistory.Count - 1);
+
         // Xor the blackTurn
         boardLogic.zobristKey = previousZobristKey;
 

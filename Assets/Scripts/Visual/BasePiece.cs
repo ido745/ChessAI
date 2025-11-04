@@ -117,7 +117,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
 
                 // Snap the piece to the square
                 RectTransform squareRect = result.gameObject.GetComponent<RectTransform>();
-                rectTransform.anchoredPosition = squareRect.anchoredPosition;
+                //rectTransform.anchoredPosition = squareRect.anchoredPosition;
 
                 // Calculate the new index of the piece
                 string name = result.gameObject.name;
@@ -171,7 +171,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
 
 
                 boardManager.moveExecuter.MakeMove(move);
-                boardDrawer.MakeVisualMove(move, gameObject, false);
+                boardDrawer.MakeVisualMove(move, gameObject, !isDragged);
 
                 index = newIndex;
 
