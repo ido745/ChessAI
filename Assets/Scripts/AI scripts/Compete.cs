@@ -49,37 +49,6 @@ public class Compete : MonoBehaviour
 
         while (moveCount < maxMoves)
         {
-            // Check for draw conditions BEFORE making a move
-            if (boardLogic.IsDraw())
-            {
-                Debug.Log($"Draw detected at move {moveCount}");
-                Debug.Log($"Reason - HalfMoveClock: {boardLogic.halfMoveClock}, PositionHistory count: {boardLogic.positionHistory.Count}");
-                boardLogic.gameEnded = true;
-                boardLogic.winner = -1;
-                break;
-            }
-
-            // Generate legal moves
-            //Move[] testMoves = new Move[256];
-            //int legalMoves = boardLogic.moveCalculator.GenerateAllMoves(testMoves, boardLogic.turn);
-
-            if (boardLogic.gameEnded && boardLogic.winner == 1 - boardLogic.turn)
-            {
-                // Game over - checkmate or stalemate
-                boardLogic.gameEnded = true;
-                if (boardLogic.IsInCheck())
-                {
-                    boardLogic.winner = 1 - boardLogic.turn;
-                    Debug.Log($"Checkmate! {(boardLogic.turn == 0 ? "Black" : "White")} wins!");
-                }
-                else
-                {
-                    boardLogic.winner = -1;
-                    Debug.Log("Stalemate!");
-                }
-                break;
-            }
-
             bool oldsTurn = (oldIsWhite && boardLogic.turn == 0) || (!oldIsWhite && boardLogic.turn == 1);
 
             //Debug.Log($"Move {moveCount + 1}: {(boardLogic.turn == 0 ? "White" : "Black")} to move ({(oldsTurn ? "Old AI" : "New AI")})");
@@ -94,6 +63,37 @@ public class Compete : MonoBehaviour
             {
                 NewVersion.StartThinking();
                 yield return new WaitUntil(() => !NewVersion.IsThinking());
+            }
+
+            // Check for draw conditions BEFORE making a move
+            if (boardLogic.IsDraw())
+            {
+                Debug.Log($"Draw detected at move {moveCount}");
+                Debug.Log($"Reason - HalfMoveClock: {boardLogic.halfMoveClock}, PositionHistory count: {boardLogic.positionHistory.Count}");
+                boardLogic.gameEnded = true;
+                boardLogic.winner = -1;
+                break;
+            }
+
+            // Generate legal moves
+            //Move[] testMoves = new Move[256];
+            //int legalMoves = boardLogic.moveCalculator.GenerateAllMoves(testMoves, boardLogic.turn);
+
+            if (boardLogic.moveCalculator.GenerateAllMoves(null, boardLogic.turn) == 0)
+            {
+                // Game over - checkmate or stalemate
+                boardLogic.gameEnded = true;
+                if (boardLogic.IsInCheck())
+                {
+                    boardLogic.winner = 1 - boardLogic.turn;
+                    Debug.Log($"Checkmate! {(boardLogic.turn == 0 ? "Black" : "White")} wins!");
+                }
+                else
+                {
+                    boardLogic.winner = -1;
+                    Debug.Log("Stalemate!");
+                }
+                break;
             }
 
             moveCount++;

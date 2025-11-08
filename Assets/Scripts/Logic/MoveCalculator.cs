@@ -180,7 +180,7 @@ public class MoveCalculator
                     int to = BitScan.TrailingZeroCount(lsb);
 
                     // Determine move details
-                    int capturedPiece = boardLogic.board[to]; // Will be 0 if it's not a capture
+                    int capturedPiece = boardLogic.board[to]; // Will be 0 if it's not a capture or if en passant
                     int flag = FindFlag(piece, from, to); // Use the actual piece, not pieceType
 
                     // --- Handle Promotions ---
@@ -189,15 +189,25 @@ public class MoveCalculator
                         int promotionColor = color == 1 ? Piece.Black : Piece.White;
 
                         // Add a move for each possible promotion piece
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Queen | promotionColor);
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Rook | promotionColor);
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Bishop | promotionColor);
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Knight | promotionColor);
+                        if (moveList != null)
+                        {
+                            moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Queen | promotionColor);
+                            moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Rook | promotionColor);
+                            moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Bishop | promotionColor);
+                            moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag, Piece.Knight | promotionColor);
+                        }
+                        else
+                        {
+                            moveCount += 4;
+                        }
                     }
                     // --- Handle all other move types ---
                     else
                     {
-                        moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag);
+                        if (moveList != null)
+                            moveList[moveCount++] = new Move(from, to, piece, capturedPiece, flag);
+                        else
+                            moveCount++;
                     }
 
                     // Remove this destination from the bitboard to process the next one

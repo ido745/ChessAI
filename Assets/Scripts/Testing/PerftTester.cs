@@ -101,9 +101,9 @@ public class PerftTester : MonoBehaviour
 
             // Set up the position
             boardLogic.ParseFEN(testPos.fen);
-            boardLogic.FindPinsAndChecks(boardLogic.turn);
-            boardLogic.UpdateAttacksMap(0);
-            boardLogic.UpdateAttacksMap(1);
+            boardLogic.attackCalculator.FindPinsAndChecks(boardLogic.turn);
+            boardLogic.attackCalculator.UpdateAttacksMap(0);
+            boardLogic.attackCalculator.UpdateAttacksMap(1);
 
             // Test depths
             int maxDepth = Math.Min(testPos.expectedNodes.Length - 1, 5);

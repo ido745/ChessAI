@@ -11,6 +11,82 @@ public class AttackCalculator
         this.boardLogic = boardLogic;
     }
 
+    // Check if it's better to use gradual changes to the attack maps
+    public ulong GetFullCheckMap(int color, int kingPos = -1)
+    {
+        ulong checkMap = 0UL;
+
+        if (kingPos == -1)
+            kingPos = TrailingZeroCount(boardLogic.bitboards[color, Piece.King - 1]);
+
+        ulong all = boardLogic.Bbitboard | boardLogic.Wbitboard;
+
+        // Get sliding piece attacks from king's perspective
+        ulong kingRookRay = Magic.GetRookAttacks(kingPos, all);
+        ulong kingBishopRay = Magic.GetBishopAttacks(kingPos, all);
+
+        // Find enemy pieces that could be checking
+        ulong enemyRooks = boardLogic.bitboards[color, Piece.Rook - 1];
+        ulong enemyBishops = boardLogic.bitboards[color, Piece.Bishop - 1];
+        ulong enemyQueens = boardLogic.bitboards[color, Piece.Queen - 1];
+        ulong enemyKnights = boardLogic.bitboards[color, Piece.Knight - 1];
+        ulong enemyPawns = boardLogic.bitboards[color, Piece.Pawn - 1];
+
+        // Check for rook/queen checks on orthogonal rays
+        ulong rookCheckers = kingRookRay & (enemyRooks | enemyQueens);
+        while (rookCheckers != 0)
+        {
+            ulong lsb = rookCheckers & (ulong)-(long)rookCheckers;
+            int checkerSq = BitScan.TrailingZeroCount(lsb);
+            rookCheckers ^= lsb;
+
+            // Get ray from checker to king (excluding king square)
+            ulong ray = boardLogic.moveCalculator.GenerateMoves(checkerSq, boardLogic.board[checkerSq], true);
+            checkMap |= ray;
+        }
+
+        // Check for bishop/queen checks on diagonal rays
+        ulong bishopCheckers = kingBishopRay & (enemyBishops | enemyQueens);
+        while (bishopCheckers != 0)
+        {
+            ulong lsb = bishopCheckers & (ulong)-(long)bishopCheckers;
+            int checkerSq = BitScan.TrailingZeroCount(lsb);
+            bishopCheckers ^= lsb;
+
+            // Get ray from checker to king (excluding king square)
+            ulong ray = boardLogic.moveCalculator.GenerateMoves(checkerSq, boardLogic.board[checkerSq], true);
+            checkMap |= ray | (1UL << checkerSq);
+        }
+
+        // Check for knight checks (no ray, just the knight square)
+        ulong knightCheckers = Magic.GetKnightAttacks(kingPos) & enemyKnights;
+        while (knightCheckers != 0)
+        {
+            ulong lsb = knightCheckers & (ulong)-(long)knightCheckers;
+            int checkerSq = BitScan.TrailingZeroCount(lsb);
+            knightCheckers ^= lsb;
+
+            // Get ray from checker to king (excluding king square)
+            ulong ray = boardLogic.moveCalculator.GenerateMoves(checkerSq, boardLogic.board[checkerSq], true);
+            checkMap |= ray;
+        }
+
+        // Check for pawn checks (no ray, just the pawn square)
+        ulong pawnCheckers = Magic.GetPawnCapturesOnly(kingPos, 1 - color) & enemyPawns;
+        while (pawnCheckers != 0)
+        {
+            ulong lsb = pawnCheckers & (ulong)-(long)pawnCheckers;
+            int checkerSq = BitScan.TrailingZeroCount(lsb);
+            pawnCheckers ^= lsb;
+
+            // Get ray from checker to king (excluding king square)
+            ulong ray = Magic.GetPawnCapturesOnly(checkerSq, color);
+            checkMap |= ray;
+        }
+
+        return checkMap;
+    }
+
     public void FindPinsAndChecks(int color)
     {
         boardLogic.pinRays = new ulong[64];
@@ -137,18 +213,21 @@ public class AttackCalculator
     }
 
     // Also fix the UpdateAttacksMap method to prevent infinite loops
-    public void UpdateAttacksMap(int color) // White = 0, Black = 1.
+    public void UpdateAttacksMap(int color)//, Move moveMade) // White = 0, Black = 1.
     {
         ulong map = 0UL;
+        ulong bitboard = (color == 0 ? boardLogic.Wbitboard : boardLogic.Bbitboard);
 
-        for (int i = 0; i < boardLogic.board.Length; i++)
+        while (bitboard != 0UL)
         {
+            int i = BitScan.TrailingZeroCount(bitboard);
+            bitboard = BitScan.ClearBit(bitboard, i);
+
             int piece = boardLogic.board[i];
-            if (piece == 0 || Piece.IsBlack(piece) != color)
-                continue;
+            
             if (Piece.GetPieceType(piece) == Piece.Pawn)
             {
-                map |= Magic.GetPawnCapturesOnly(i, Piece.IsBlack(piece));
+                map |= Magic.GetPawnCapturesOnly(i, color);
                 continue;
             }
 
@@ -159,7 +238,7 @@ public class AttackCalculator
         boardLogic.attackedSquares[color] = map;
     }
 
-    private bool IsStalemate(int color)
+    public bool IsStalemate(int color)
     {
         // Go through all pieces of the current color
         for (int pieceType = 1; pieceType <= 6; pieceType++)
@@ -219,19 +298,19 @@ public class AttackCalculator
         return false;
     }
 
-    private bool HasInsufficientMaterial()
+    public bool HasInsufficientMaterial()
     {
         // Count pieces for both sides
-        int whiteBishops = BitScan.PopCount(boardLogic.bitboards[0, Piece.Bishop - 1]);
-        int blackBishops = BitScan.PopCount(boardLogic.bitboards[1, Piece.Bishop - 1]);
-        int whiteKnights = BitScan.PopCount(boardLogic.bitboards[0, Piece.Knight - 1]);
-        int blackKnights = BitScan.PopCount(boardLogic.bitboards[1, Piece.Knight - 1]);
-        int whiteRooks = BitScan.PopCount(boardLogic.bitboards[0, Piece.Rook - 1]);
-        int blackRooks = BitScan.PopCount(boardLogic.bitboards[1, Piece.Rook - 1]);
-        int whiteQueens = BitScan.PopCount(boardLogic.bitboards[0, Piece.Queen - 1]);
-        int blackQueens = BitScan.PopCount(boardLogic.bitboards[1, Piece.Queen - 1]);
-        int whitePawns = BitScan.PopCount(boardLogic.bitboards[0, Piece.Pawn - 1]);
-        int blackPawns = BitScan.PopCount(boardLogic.bitboards[1, Piece.Pawn - 1]);
+        int whiteBishops = boardLogic.numOfPieces[0, Piece.Bishop - 1];
+        int blackBishops = boardLogic.numOfPieces[1, Piece.Bishop - 1];
+        int whiteKnights = boardLogic.numOfPieces[0, Piece.Knight - 1];
+        int blackKnights = boardLogic.numOfPieces[1, Piece.Knight - 1];
+        int whiteRooks = boardLogic.numOfPieces[0, Piece.Rook - 1];
+        int blackRooks = boardLogic.numOfPieces[1, Piece.Rook - 1];
+        int whiteQueens = boardLogic.numOfPieces[0, Piece.Queen - 1];
+        int blackQueens = boardLogic.numOfPieces[1, Piece.Queen - 1];
+        int whitePawns = boardLogic.numOfPieces[0, Piece.Pawn - 1];
+        int blackPawns = boardLogic.numOfPieces[1, Piece.Pawn - 1];
 
         // Any pawns, rooks, or queens instantly means sufficient material.
         if (whitePawns + blackPawns + whiteRooks + blackRooks + whiteQueens + blackQueens > 0)

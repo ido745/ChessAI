@@ -41,7 +41,8 @@ public class BoardLogic : MonoBehaviour
     // Hybrid approach: board to check what piece is on a certin position, bitboard for move generation etc.
     public int[] board = new int[64];
     public ulong[,] bitboards = new ulong[2, 6];   // For each color, for each type.
-                                                    // 1 - King, 2 - pawn, 3 - knight, 4 - bishop, 5 - rook, 6 - queen.
+                                                   // 1 - King, 2 - pawn, 3 - knight, 4 - bishop, 5 - rook, 6 - queen.
+    public int[,] numOfPieces = new int[2,6]{ { 0, 0, 0, 0, 0, 0}, { 0, 0, 0, 0, 0, 0 } };
     public ulong Wbitboard;
     public ulong Bbitboard;
     public ulong enPassantSquare = 0;
@@ -49,8 +50,8 @@ public class BoardLogic : MonoBehaviour
     // Helper classes
     public readonly MoveExecuter moveExecuter;
     public readonly MoveCalculator moveCalculator;
+    public readonly AttackCalculator attackCalculator;
 
-    private readonly AttackCalculator attackCalculator;
     private readonly MoveToNotationConverter moveToNotationConverter;
     private GameObject boardDrawer;
 
@@ -59,7 +60,7 @@ public class BoardLogic : MonoBehaviour
     public bool normalStarting = true;
 
     private string FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    //private string FEN = "8/8/8/6q1/4k3/8/8/5K2 w KQkq - 0 1";
+    //private string FEN = "8/6pk/6pp/8/7q/8/8/3K4 w - - - 0 1";
     public ulong zobristKey;
 
     public short turn = 0;     // 0 - white, 1 - black.
@@ -67,6 +68,7 @@ public class BoardLogic : MonoBehaviour
     public int castlingRights = 15; // 15 = 1111  - all sides can castle.
                                     // Format: kqKQ. e.g. 1001 - black can castle king side and white can castle queen side.
     public int currentCastling = 15;
+    public bool[] castled = new bool[2];
 
     // For fast legal move generation - keep bitboards for the white and black attacking squares.
     public ulong[] attackedSquares = new ulong[2];
@@ -111,10 +113,12 @@ public class BoardLogic : MonoBehaviour
         // 1. Reset current board state
         board = new int[64];
         bitboards = new ulong[2, 6];
+        numOfPieces = new int[2, 6] { { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 } };
         Wbitboard = 0;
         Bbitboard = 0;
         enPassantSquare = 0;
         castlingRights = 0; // Will be built from the FEN string
+        castled = new bool[2] { false, false };
 
         string[] fenParts = fen.Split(' ');
 
@@ -144,6 +148,7 @@ public class BoardLogic : MonoBehaviour
             int type = Piece.GetPieceType(piece);
             int isBlack = Piece.IsBlack(piece);
             bitboards[isBlack, type - 1] = SetBit(bitboards[isBlack, type - 1], pos);
+            numOfPieces[isBlack, type - 1] += 1;
 
             file++;
         }
@@ -214,25 +219,11 @@ public class BoardLogic : MonoBehaviour
         }
     }
 
-    public void FindPinsAndChecks(int color)
-    {
-        attackCalculator.FindPinsAndChecks(color);
-    }
-
-    public int CheckForEndGame(int color)
-    {
-        return attackCalculator.CheckForEndGame(color);
-    }
-
-    public void UpdateAttacksMap(int color)
-    {
-        attackCalculator.UpdateAttacksMap(color);
-    }
-
     public void ResetBoard()
     {
         turn = 0;
         gameEnded = false;
+        winner = -1;
 
         castlingRights = 15; 
         currentCastling = 15;
@@ -242,6 +233,7 @@ public class BoardLogic : MonoBehaviour
         checkMap = 0UL;
         pinRays = new ulong[64];
         doubleCheck = new bool[] { false, false };
+        castled = new bool[2] { false, false };
 
         openingLine = "";
         openingHistory = new Stack<string>();
@@ -249,6 +241,8 @@ public class BoardLogic : MonoBehaviour
         halfMoveClock = 0;
         positionHistory = new List<ulong>();
         normalStarting = true;
+        numOfPieces = new int[2, 6] { { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 } };
+
         ParseFEN(FEN);
 
         attackCalculator.UpdateAttacksMap(0);
@@ -304,8 +298,8 @@ public class BoardLogic : MonoBehaviour
 
     public bool IsDraw()
     {
-        int checkForWhite = CheckForEndGame(0);
-        int checkForBlack = CheckForEndGame(1);
+        int checkForWhite = attackCalculator.CheckForEndGame(0);
+        int checkForBlack = attackCalculator.CheckForEndGame(1);
         
         return (checkForWhite == 3 || checkForWhite == 2 || checkForBlack == 2);
     }

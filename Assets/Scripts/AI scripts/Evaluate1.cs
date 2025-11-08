@@ -45,11 +45,11 @@ public class Evaluate1 : MonoBehaviour
     private int CountMaterial(int color)
     {
         int materialScore = 0;
-        materialScore += BitScan.PopCount(boardLogic.bitboards[color, Piece.Pawn - 1]) * Pawn;
-        materialScore += BitScan.PopCount(boardLogic.bitboards[color, Piece.Knight - 1]) * Knight;
-        materialScore += BitScan.PopCount(boardLogic.bitboards[color, Piece.Bishop - 1]) * Bishop;
-        materialScore += BitScan.PopCount(boardLogic.bitboards[color, Piece.Rook - 1]) * Rook;
-        materialScore += BitScan.PopCount(boardLogic.bitboards[color, Piece.Queen - 1]) * Queen;
+        materialScore += boardLogic.numOfPieces[color, Piece.Pawn - 1] * Pawn;
+        materialScore += boardLogic.numOfPieces[color, Piece.Knight - 1] * Knight;
+        materialScore += boardLogic.numOfPieces[color, Piece.Bishop - 1] * Bishop;
+        materialScore += boardLogic.numOfPieces[color, Piece.Rook - 1] * Rook;
+        materialScore += boardLogic.numOfPieces[color, Piece.Queen - 1] * Queen;
         return materialScore;
     }
 
@@ -113,9 +113,6 @@ public class Evaluate1 : MonoBehaviour
             if ((boardLogic.bitboards[0, Piece.Knight - 1] & (1UL << 6)) != 0) score -= 20; // g1 knight
             if ((boardLogic.bitboards[0, Piece.Bishop - 1] & (1UL << 2)) != 0) score -= 15; // c1 bishop
             if ((boardLogic.bitboards[0, Piece.Bishop - 1] & (1UL << 5)) != 0) score -= 15; // f1 bishop
-
-            // Bonus for castling
-            if ((boardLogic.castlingRights & 0b11) == 0) score += 30; // Castled
         }
         else // Black (similar logic with different squares)
         {
@@ -123,9 +120,10 @@ public class Evaluate1 : MonoBehaviour
             if ((boardLogic.bitboards[1, Piece.Knight - 1] & (1UL << 62)) != 0) score -= 20;
             if ((boardLogic.bitboards[1, Piece.Bishop - 1] & (1UL << 58)) != 0) score -= 15;
             if ((boardLogic.bitboards[1, Piece.Bishop - 1] & (1UL << 61)) != 0) score -= 15;
-
-            if ((boardLogic.castlingRights & 0b1100) == 0) score += 30;
         }
+
+        if (boardLogic.castled[color])
+            score += 30;
 
         return score;
     }
@@ -230,7 +228,6 @@ public class Evaluate1 : MonoBehaviour
         }
     }
 
-    // MOP UP SCORE
     private int EvaluateMopUp(BoardLogic boardLogic)
     {
         int whiteMatAdvantage = CountMaterial(0) - CountMaterial(1);

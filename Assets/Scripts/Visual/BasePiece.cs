@@ -81,7 +81,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         int type = pieceType;
         // Only move if this is our turn
         isMoving = (type >> 4) == boardManager.turn;
-        if (!boardDrawer.gameStarted || boardDrawer.playingAI && (boardManager.turn != boardDrawer.playingColor))
+        if (!boardDrawer.gameStarted || boardDrawer.playingAI && (boardManager.turn != boardDrawer.playingColor) || boardManager.gameEnded)
             isMoving = false;   // if we play ai, we don't want to allow to drag the pieces.
 
         if (!isMoving)

@@ -15,11 +15,6 @@ public class MoveExecuter
 
     public void MakeMove(Move move)
     {
-        if (move.capturedPiece == 0 && move.movedPiece != Piece.Pawn)
-            boardLogic.halfMoveClock++;
-        else
-            boardLogic.halfMoveClock = 0;
-
         // Xor the blackTurn, since we switched turns
         boardLogic.zobristKey ^= Zobrist.blackToMoveKey;
         // Xor out the old en passant and castling rights.
@@ -69,8 +64,8 @@ public class MoveExecuter
         // Update attack maps and check/pin detection
         UpdateCastlingRights(move, pieceType, movingColor);
 
-        boardLogic.UpdateAttacksMap(movingColor);
-        boardLogic.FindPinsAndChecks(1 - movingColor);
+        boardLogic.attackCalculator.UpdateAttacksMap(movingColor);
+        boardLogic.attackCalculator.FindPinsAndChecks(1 - movingColor);
 
         UpdateCastlingRights(move, pieceType, movingColor);
 
@@ -106,6 +101,7 @@ public class MoveExecuter
 
         // Remove captured piece from its bitboard
         boardLogic.bitboards[capturedColor, capturedType - 1] = ClearBit(boardLogic.bitboards[capturedColor, capturedType - 1], move.to);
+        boardLogic.numOfPieces[capturedColor, capturedType - 1]--;
 
         // Xor out the captured piece fromt the zobrist key
         boardLogic.zobristKey ^= Zobrist.pieceKeys[capturedColor, capturedType - 1, move.to];
@@ -213,6 +209,7 @@ public class MoveExecuter
         // Remove from enemy pawn bitboard and color occupancy
         int enemyColor = 1 - movingColor;
         boardLogic.bitboards[enemyColor, Piece.Pawn - 1] = ClearBit(boardLogic.bitboards[enemyColor, Piece.Pawn - 1], capturedPawnSquare);
+        boardLogic.numOfPieces[enemyColor, Piece.Pawn - 1]--;
 
         if (enemyColor == 1)
             boardLogic.Bbitboard = ClearBit(boardLogic.Bbitboard, capturedPawnSquare);
@@ -227,6 +224,8 @@ public class MoveExecuter
     {
         bool isKingSide = (move.to - move.from) == 2;
         int color = Piece.IsBlack(move.movedPiece);
+
+        boardLogic.castled[color] = true;
 
         // Calculate rook positions
         int rookFrom, rookTo;
@@ -271,9 +270,11 @@ public class MoveExecuter
         // Update the values in the bitboards
         ulong pawnbit = boardLogic.bitboards[color, oldType - 1];
         boardLogic.bitboards[color, oldType - 1] = BitScan.ClearBit(pawnbit, move.to);
+        boardLogic.numOfPieces[color, oldType - 1]--;
 
         ulong promotedBit = boardLogic.bitboards[color, newType - 1];
         boardLogic.bitboards[color, newType - 1] = BitScan.SetBit(promotedBit, move.to);
+        boardLogic.numOfPieces[color, newType - 1]++;
 
         // Update board array
         boardLogic.board[move.to] = move.promotionPiece;
@@ -283,8 +284,8 @@ public class MoveExecuter
         boardLogic.zobristKey ^= Zobrist.pieceKeys[color, newType - 1, move.to];
 
         // Update attack maps and checks
-        boardLogic.UpdateAttacksMap(Piece.IsBlack(newType));
-        boardLogic.FindPinsAndChecks(1 - Piece.IsBlack(newType));
+        boardLogic.attackCalculator.UpdateAttacksMap(Piece.IsBlack(newType));
+        boardLogic.attackCalculator.FindPinsAndChecks(1 - Piece.IsBlack(newType));
     }
 
     // Helper method to move a bit from one position to another in a bitboard
@@ -292,9 +293,6 @@ public class MoveExecuter
 
     public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare, ulong previousZobristKey)
     {
-        if (move.capturedPiece == 0 && move.movedPiece != Piece.Pawn)
-            boardLogic.halfMoveClock--;
-
         boardLogic.positionHistory.RemoveAt(boardLogic.positionHistory.Count - 1);
 
         // Xor the blackTurn
@@ -358,6 +356,7 @@ public class MoveExecuter
             int capturedColor = Piece.IsBlack(capturedPiece);
             int capturedType = Piece.GetPieceType(capturedPiece);
             boardLogic.bitboards[capturedColor, capturedType - 1] = SetBit(boardLogic.bitboards[capturedColor, capturedType - 1], toSquare);
+            boardLogic.numOfPieces[capturedColor, capturedType - 1]++;
         }
 
         // Update aggregate bitboards
@@ -366,6 +365,8 @@ public class MoveExecuter
 
     private void UnmakeCastling(int fromSquare, int toSquare, int color)
     {
+        boardLogic.castled[color] = false;
+
         // Determine if this was kingside or queenside castling
         bool kingSide = toSquare > fromSquare;
 
@@ -430,9 +431,11 @@ public class MoveExecuter
 
         // Update bitboards - remove promoted piece
         boardLogic.bitboards[color, promotedPieceType - 1] = ClearBit(boardLogic.bitboards[color, promotedPieceType - 1], toSquare);
+        boardLogic.numOfPieces[color, promotedPieceType - 1]--;
 
         // Restore pawn
         boardLogic.bitboards[color, Piece.Pawn - 1] = SetBit(boardLogic.bitboards[color, Piece.Pawn - 1], fromSquare);
+        boardLogic.numOfPieces[color, Piece.Pawn - 1]++;
 
         // If there was a captured piece, restore it
         if (capturedPiece != 0)
@@ -440,6 +443,7 @@ public class MoveExecuter
             int capturedColor = Piece.IsBlack(capturedPiece);
             int capturedType = Piece.GetPieceType(capturedPiece);
             boardLogic.bitboards[capturedColor, capturedType - 1] = SetBit(boardLogic.bitboards[capturedColor, capturedType - 1], toSquare);
+            boardLogic.numOfPieces[capturedColor, capturedType - 1]++;
         }
 
         UpdateAggregateBitboards();
@@ -476,6 +480,7 @@ public class MoveExecuter
         // Restore captured pawn bitboard
         int capturedColor = 1 - color;
         boardLogic.bitboards[capturedColor, Piece.Pawn - 1] = SetBit(boardLogic.bitboards[capturedColor, Piece.Pawn - 1], capturedPawnSquare);
+        boardLogic.numOfPieces[capturedColor, Piece.Pawn - 1]++;
 
 
         UpdateAggregateBitboards();

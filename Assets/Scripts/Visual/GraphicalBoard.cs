@@ -189,7 +189,7 @@ public class GraphicalBoard : MonoBehaviour
         timer.SwitchTurn();
 
         // Look for checkmate/stalemate
-        int checkForEndGame = boardLogic.CheckForEndGame(boardLogic.turn);
+        int checkForEndGame = boardLogic.attackCalculator.CheckForEndGame(boardLogic.turn);
         if (checkForEndGame == 1)
         {
             // 1 - turn won by checkmate
