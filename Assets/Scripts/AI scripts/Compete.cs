@@ -14,10 +14,10 @@ public class Compete : MonoBehaviour
     private int newWins = 0;
     private int draws = 0;
 
-    //void Start()
-    //{
-    //    StartCoroutine(RunCompetition());
-    //}
+    void Start()
+    {
+        StartCoroutine(RunCompetition());
+    }
 
     IEnumerator RunCompetition()
     {

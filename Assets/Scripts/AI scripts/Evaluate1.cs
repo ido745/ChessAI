@@ -206,12 +206,12 @@ public class Evaluate1 : MonoBehaviour
     {
         int gamePhase = GetGamePhase();
 
-        if (gamePhase >= 20)
+        if (gamePhase >= 30)
         {
             // Middlegame: keep king safe
             return PieceSquareTables.pawnTable[pawnPos];
         }
-        else if (gamePhase <= 10)
+        else if (gamePhase <= 20)
         {
             // Endgame: centralize king
             return PieceSquareTables.pawnTableEnd[pawnPos];

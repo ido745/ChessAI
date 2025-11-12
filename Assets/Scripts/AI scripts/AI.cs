@@ -21,7 +21,6 @@ public struct MoveState
     public bool[] castled;
     public int halfMoveClock;
 }
-
 public class AI : MonoBehaviour
 {
     const int MAX_PLY = 128;    // raised to 128 instead of 20
@@ -64,6 +63,8 @@ public class AI : MonoBehaviour
     private ulong[][] allocatedPinRays = new ulong[MAX_PLY][];
     private bool[][] allocatedDoubleCheck = new bool[MAX_PLY][];
     private ulong[][] allocatedAttackedSquares = new ulong[MAX_PLY][];
+
+    //[SerializeField] ChessDebugDisplay debugText;
 
     // Initialize in Start() or ResetAI()
     private void InitializeMoveStatePool()
