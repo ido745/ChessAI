@@ -4,37 +4,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using static BitScan;
 
-public enum MoveFlag
-{
-    Normal = 0,
-    Castling = 1,
-    Promotion = 2,
-    EnPassant = 3,
-    DoublePawnMove = 4
-}
-
-public struct Move
-{
-    public int from;
-    public int to;
-    public int movedPiece;
-    public int capturedPiece;
-
-    public int flag; // 0 - normal, 1 - castling, 2 - promotion, 3 - en passant, 4 - double move.
-    public int promotionPiece;
-
-    public Move(int from, int to, int moved, int captured = 0, int flag = 0, int promotionPiece = 0)
-    {
-        this.from = from;
-        this.to = to;
-        this.movedPiece = moved;
-        this.capturedPiece = captured;
-        this.flag = flag;
-
-        this.promotionPiece = promotionPiece;
-    }
-}
-
 // Generating and making moves, implementing game logic.
 public class BoardLogic : MonoBehaviour
 {
@@ -92,6 +61,21 @@ public class BoardLogic : MonoBehaviour
         attackCalculator = new AttackCalculator(this);
         moveCalculator = new MoveCalculator(this);
         moveToNotationConverter = new MoveToNotationConverter(this);
+    }
+
+    // Make it a singleton - only one instance of BoardLogic.
+    public static BoardLogic Instance { get; private set; }
+
+    private void Awake()
+    {
+        // If there is already an instance and it is not this one, destroy this object
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
     }
 
     // Start is called before the first frame update

@@ -206,12 +206,12 @@ public class Evaluate : MonoBehaviour
     {
         int gamePhase = GetGamePhase();
 
-        if (gamePhase >= 20)
+        if (gamePhase >= 30)
         {
             // Middlegame: keep king safe
             return PieceSquareTables.pawnTable[pawnPos];
         }
-        else if (gamePhase <= 10)
+        else if (gamePhase <= 20)
         {
             // Endgame: centralize king
             return PieceSquareTables.pawnTableEnd[pawnPos];
@@ -228,7 +228,6 @@ public class Evaluate : MonoBehaviour
         }
     }
 
-    // MOP UP SCORE
     private int EvaluateMopUp(BoardLogic boardLogic)
     {
         int whiteMatAdvantage = CountMaterial(0) - CountMaterial(1);

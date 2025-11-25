@@ -54,6 +54,11 @@ public class AI1 : MonoBehaviour
     private bool[][] allocatedDoubleCheck = new bool[MAX_PLY][];
     private ulong[][] allocatedAttackedSquares = new ulong[MAX_PLY][];
 
+    private Move[][] moveList = new Move[MAX_PLY][];
+    private Move[][] captureList = new Move[MAX_PLY][]; // for q-search
+
+    public Compete versionTester;
+
     // Initialize in Start() or ResetAI()
     private void InitializeMoveStatePool()
     {
@@ -65,12 +70,22 @@ public class AI1 : MonoBehaviour
         }
     }
 
+    private void InitializeMovePools()
+    {
+        for (int i = 0; i < MAX_PLY; i++)
+        {
+            moveList[i] = new Move[256];
+            captureList[i] = new Move[128];
+        }
+    }
+
     // Start is called before the first frame update
     private void Start()
     {
         evaluator = GetComponent<Evaluate1>();
         openingFiles = Resources.LoadAll<TextAsset>("Openings");
         InitializeMoveStatePool();
+        InitializeMovePools();
 
         StartCoroutine(UpdateDepthTextCoroutine());
     }
@@ -181,12 +196,13 @@ public class AI1 : MonoBehaviour
 
         Array.Clear(pvLength, 0, pvLength.Length);
 
-        int depth = 1;
+        int depth = 0;
         bestScoreForDebug = -INFINITY;
         int previousScore = 0;
 
         while (!aborted && searchStopwatch.ElapsedMilliseconds < searchTimeLimitMs)
         {
+            depth++;
             currentSearchDepth = depth;
             // For depths 5+, use aspiration windows
             int score;
@@ -204,8 +220,6 @@ public class AI1 : MonoBehaviour
                 score = bestScoreForDebug;
             }
 
-            depth++;
-
             if (aborted || !IsValidMove(candidate))
                 break;
 
@@ -220,6 +234,9 @@ public class AI1 : MonoBehaviour
 
         float nps = nodesSearched / (TIME_LIMIT / 1000f);
         float ttHitRate = (ttProbes > 0) ? (tt.Hits * 100f / ttProbes) : 0;
+
+        print($"*** new AI got to depth {depth}. --- nps: {nps}, tt hit rate: {ttHitRate}");
+        versionTester.updateInfoToNew(depth, nps, ttHitRate);
 
         searchStopwatch.Stop();
         return lastBestMove;
@@ -291,7 +308,7 @@ public class AI1 : MonoBehaviour
     {
         if (aborted) return new Move();
 
-        Move[] moves = new Move[256];
+        Move[] moves = moveList[0];
         int movesCount = boardLogic.moveCalculator.GenerateAllMoves(moves, boardLogic.turn);
 
         if (movesCount == 0)
@@ -390,6 +407,10 @@ public class AI1 : MonoBehaviour
 
         int originalAlpha = alpha;
 
+        // Reached maximum ply - return the static evaluation
+        if (ply == MAX_PLY)
+            return GetCachedEvaluation();
+
         // Abort if time is up
         if (searchStopwatch.ElapsedMilliseconds >= searchTimeLimitMs)
         {
@@ -432,7 +453,7 @@ public class AI1 : MonoBehaviour
             return ttScore;
         }
 
-        Move[] moves = new Move[256];
+        Move[] moves = moveList[ply];
         int movesCount = boardLogic.moveCalculator.GenerateAllMoves(moves, boardLogic.turn);
 
         if (movesCount == 0)
@@ -447,10 +468,6 @@ public class AI1 : MonoBehaviour
         {
             depth += 1;
         }
-
-        // Reached maximum ply - return the static evaluation
-        if (ply == MAX_PLY)
-            return GetCachedEvaluation();
 
         if (depth == 0)
         {
@@ -526,26 +543,31 @@ public class AI1 : MonoBehaviour
             boardLogic.moveExecuter.MakeMove(move);
             nodesSearched++;
 
+            // Replace your current LMR section in RecursiveSearch with this improved version:
+
             int score;
 
             // Conditions for applying LMR
-            bool canReduce = i >= 3 &&                 // Don't reduce the first few moves
+            bool canReduce = i >= 3 &&                          // Don't reduce the first few moves
                              depth >= 3 &&
-                             move.capturedPiece == 0 &&   // Don't reduce captures
+                             move.capturedPiece == 0 &&         // Don't reduce captures
                              move.flag != (int)MoveFlag.Promotion && // Don't reduce promotions
                              !boardLogic.IsInCheck() &&         // Don't reduce moves that give check
-                             !wasInCheck;  // Don't reduce check evasions
+                             !wasInCheck;                       // Don't reduce check evasions
+
             if (canReduce)
             {
-                // 1. Calculate a dynamic reduction amount
-                int reduction = (int)(1 + Math.Log(depth) * Math.Log(i) / 2);
-                reduction = Math.Min(reduction, depth - 1); // Don't reduce into q-search
+                // Calculate reduction (your complex version is fine here)
+                double baseReduction = Math.Log(depth) * Math.Log(i) / 2.5;
+                int reduction = (int)Math.Ceiling(baseReduction);
 
-                // 2. Search with a reduced depth and a ZERO WINDOW
+                // Apply your adjustments...
+                reduction = Math.Max(1, Math.Min(reduction, depth - 2));
+
+                // Scout search with reduced depth
                 score = -RecursiveSearch(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, true);
 
-                // 3. If the scout search failed high (score > alpha), it means the move is promising.
-                //    We MUST re-search with the full depth and full window.
+                // If scout failed high, IMMEDIATELY do full-depth full-window search
                 if (score > alpha)
                 {
                     score = -RecursiveSearch(depth - 1, -beta, -alpha, ply + 1, true);
@@ -553,7 +575,7 @@ public class AI1 : MonoBehaviour
             }
             else
             {
-                // Full depth, full window search for important moves (first few, captures, checks, etc.)
+                // Full depth, full window search for first move and critical positions
                 score = -RecursiveSearch(depth - 1, -beta, -alpha, ply + 1, true);
             }
 
@@ -649,7 +671,7 @@ public class AI1 : MonoBehaviour
         }
 
         // Generate only capture moves
-        Move[] captures = new Move[128];
+        Move[] captures = captureList[qPly];
         int captureCount = boardLogic.moveCalculator.GenerateAllCaptures(captures, boardLogic.turn);
 
         int allMovesCount = -1;

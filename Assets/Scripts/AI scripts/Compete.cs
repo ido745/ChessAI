@@ -14,14 +14,61 @@ public class Compete : MonoBehaviour
     private int newWins = 0;
     private int draws = 0;
 
-    void Start()
+    private float totaldepthNew = 0;
+    private float totaldepthOld = 0;
+
+    private float totalnpsNew = 0;
+    private float totalnpsOld = 0;
+
+    private float totalHitRateNew = 0;
+    private float totalHitRateOld = 0;
+
+    private int TotalMovesOld = 0;
+    private int TotalMovesNew = 0;
+
+    //void Start()
+    //{
+    //    StartCoroutine(RunCompetition());
+    //}
+
+    public void updateInfoToNew(int depth, float nps, float hitRate)
     {
-        StartCoroutine(RunCompetition());
+        if (depth > 128) // if a non-real number was reported, just add the average again
+            totaldepthNew += totaldepthNew / TotalMovesNew;
+        else
+            totaldepthNew += depth;
+
+        totalnpsNew += nps;
+
+        totalHitRateNew += hitRate;
+    }
+
+    public void updateInfoToOld(int depth, float nps, float hitRate)
+    {
+        if (depth > 128) // if a non-real number was reported, just add the average again
+            totaldepthOld += totaldepthOld / TotalMovesOld;
+        else
+            totaldepthOld += depth;
+
+        totalnpsOld += nps;
+
+        totalHitRateOld += hitRate;
     }
 
     IEnumerator RunCompetition()
     {
         yield return new WaitForSeconds(1f);
+        totaldepthNew = 0;
+        totaldepthOld = 0;
+
+        totalnpsNew = 0;
+        totalnpsOld = 0;
+
+        totalHitRateNew = 0;
+        totalHitRateOld = 0;
+
+        TotalMovesNew = 0;
+        TotalMovesOld = 0;
 
         for (int gameNum = 0; gameNum < numberOfGames; gameNum++)
         {
@@ -58,14 +105,15 @@ public class Compete : MonoBehaviour
             {
                 OldVersion.StartThinking();
                 yield return new WaitUntil(() => !OldVersion.IsThinking());
+                TotalMovesOld++;
             }
             else
             {
                 NewVersion.StartThinking();
                 yield return new WaitUntil(() => !NewVersion.IsThinking());
+                TotalMovesNew++;
             }
 
-            // Check for draw conditions BEFORE making a move
             if (boardLogic.IsDraw())
             {
                 Debug.Log($"Draw detected at move {moveCount}");
@@ -143,6 +191,16 @@ public class Compete : MonoBehaviour
             }
         }
 
+        Debug.Log(" ---- Old AI ----");
+        Debug.Log($"average depth: {totaldepthOld / TotalMovesOld}\n");
+        Debug.Log($"average nps: {totalnpsOld / TotalMovesOld}");
+        Debug.Log($"average hit rate: {totalHitRateOld / TotalMovesOld}");
+
+        Debug.Log(" ---- New AI ----");
+        Debug.Log($"average depth: {totaldepthNew / TotalMovesNew}\n");
+        Debug.Log($"average nps: {totalnpsNew / TotalMovesNew}");
+        Debug.Log($"average hit rate: {totalHitRateNew / TotalMovesNew}");
+
         Debug.Log($"Current score: Old AI {oldWins} - {newWins} New AI (Draws: {draws})");
     }
 
@@ -158,6 +216,16 @@ public class Compete : MonoBehaviour
 
         float oldWinRate = (oldWins / (float)numberOfGames) * 100f;
         float newWinRate = (newWins / (float)numberOfGames) * 100f;
+
+        Debug.Log(" ---- Old AI ----");
+        Debug.Log($"average depth: {totaldepthOld / TotalMovesOld}\n");
+        Debug.Log($"average nps: {totalnpsOld / TotalMovesOld}");
+        Debug.Log($"average hit rate: {totalHitRateOld / TotalMovesOld}");
+
+        Debug.Log(" ---- New AI ----");
+        Debug.Log($"average depth: {totaldepthNew / TotalMovesNew}\n");
+        Debug.Log($"average nps: {totalnpsNew / TotalMovesNew}");
+        Debug.Log($"average hit rate: {totalHitRateNew / TotalMovesNew}");
 
         Debug.Log($"Old AI win rate: {oldWinRate:F1}%");
         Debug.Log($"New AI win rate: {newWinRate:F1}%");
