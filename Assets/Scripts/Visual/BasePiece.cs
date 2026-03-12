@@ -25,7 +25,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
 
     void Start()
     {
-        boardManager = transform.GetComponentInParent<BoardLogic>();
+        boardManager = BoardLogic.Instance;
         boardDrawer = transform.parent.GetComponentInParent<GraphicalBoard>();
         rectTransform = GetComponent<RectTransform>();
 

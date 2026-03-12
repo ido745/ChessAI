@@ -90,18 +90,11 @@ public class OptimizedPerftTester : MonoBehaviour
         public bool gameEnded;
     }
 
-    //void Start()
-    //{
-    //    boardLogic = GetComponent<BoardLogic>();
-    //    if (boardLogic == null)
-    //    {
-    //        UnityEngine.Debug.LogError("BoardLogic component not found!");
-    //        return;
-    //    }
-
-    //    // Wait a frame to ensure everything is initialized
-    //    Invoke(nameof(RunPerftTests), 0.1f);
-    //}
+    void Start()
+    {
+        boardLogic = BoardLogic.Instance;
+        //Invoke(nameof(RunPerftTests), 0.1f);
+    }
 
     private void RunPerftTests()
     {
@@ -330,7 +323,7 @@ public class OptimizedPerftTester : MonoBehaviour
     private void RestoreMoveState(Move move, MoveState state)
     {
         // 1. Unmake the physical move on the board
-        boardLogic.GetComponent<BoardLogic>().moveExecuter.UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
+        boardLogic.moveExecuter.UnmakeMove(move, state.castlingRights, state.enPassantSquare, state.zobristKey);
 
         // 2. Restore the entire derived state from the saved struct.
         // This is now the single point of state restoration.

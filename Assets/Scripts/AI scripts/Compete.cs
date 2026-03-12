@@ -5,10 +5,10 @@ public class Compete : MonoBehaviour
 {
     [SerializeField] private AI OldVersion;
     [SerializeField] private AI1 NewVersion;
-    [SerializeField] private BoardLogic boardLogic;
     [SerializeField] private GraphicalBoard graphicalBoard;
     [SerializeField] private int numberOfGames = 30;
     [SerializeField] private float delayBetweenMoves = 0.5f;
+    private BoardLogic boardLogic;
 
     private int oldWins = 0;
     private int newWins = 0;
@@ -28,7 +28,8 @@ public class Compete : MonoBehaviour
 
     void Start()
     {
-       StartCoroutine(RunCompetition());
+        boardLogic = BoardLogic.Instance;
+        //StartCoroutine(RunCompetition());
     }
 
     public void updateInfoToNew(int depth, float nps, float hitRate)

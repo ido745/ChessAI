@@ -76,18 +76,11 @@ public class PerftTester : MonoBehaviour
         }
     }
 
-    //void Start()
-    //{
-    //    boardLogic = GetComponent<BoardLogic>();
-    //    if (boardLogic == null)
-    //    {
-    //        UnityEngine.Debug.LogError("BoardLogic component not found!");
-    //        return;
-    //    }
-
-    //    // Wait a frame to ensure everything is initialized
-    //    Invoke(nameof(RunPerftTests), 0.1f);
-    //}
+    void Start()
+    {
+        boardLogic = BoardLogic.Instance;
+        //Invoke(nameof(RunPerftTests), 0.1f);
+    }
 
     private void RunPerftTests()
     {

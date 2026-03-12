@@ -1,9 +1,3 @@
-using System;
-using UnityEngine;
-using UnityEngine.Rendering.Universal;
-using static BitScan;
-using static UnityEngine.RuleTile.TilingRuleOutput;
-
 public class MoveExecuter
 {
     private BoardLogic boardLogic;

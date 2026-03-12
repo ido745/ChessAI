@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
-//using UnityEditor.Rendering.LookDev;
-using UnityEngine;
 using static BitScan;
 
 // Generating and making moves, implementing game logic.
-public class BoardLogic : MonoBehaviour
+public class BoardLogic
 {
     // Hybrid approach: board to check what piece is on a certin position, bitboard for move generation etc.
     public int[] board = new int[64];
@@ -22,7 +20,7 @@ public class BoardLogic : MonoBehaviour
     public readonly AttackCalculator attackCalculator;
 
     private readonly MoveToNotationConverter moveToNotationConverter;
-    private GameObject boardDrawer;
+    //private GameObject boardDrawer;
 
     public bool gameEnded = false;
     public int winner;
@@ -58,41 +56,48 @@ public class BoardLogic : MonoBehaviour
 
     public BoardLogic()
     {
-        // Initialize helper classes in constructor
         moveExecuter = new MoveExecuter(this);
         attackCalculator = new AttackCalculator(this);
         moveCalculator = new MoveCalculator(this);
         moveToNotationConverter = new MoveToNotationConverter(this);
+
+        Instance = this;  // was in Awake()
+
+        // was in Start():
+        normalStarting = (FEN == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        ParseFEN(FEN);
+        attackCalculator.UpdateAttacksMap(0);
+        attackCalculator.UpdateAttacksMap(1);
     }
 
     // Make it a singleton - only one instance of BoardLogic.
     public static BoardLogic Instance { get; private set; }
 
-    private void Awake()
-    {
-        // If there is already an instance and it is not this one, destroy this object
-        if (Instance != null && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
+    // private void Awake()
+    // {
+    //     // If there is already an instance and it is not this one, destroy this object
+    //     if (Instance != null && Instance != this)
+    //     {
+    //         Destroy(gameObject);
+    //         return;
+    //     }
 
-        Instance = this;
-    }
+    //     Instance = this;
+    // }
 
-    // Start is called before the first frame update
-    private void Start()
-    {
-        normalStarting = (FEN == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    // // Start is called before the first frame update
+    // private void Start()
+    // {
+    //     normalStarting = (FEN == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
-        // Set the pieces on the board
-        ParseFEN(FEN);
+    //     // Set the pieces on the board
+    //     ParseFEN(FEN);
 
-        boardDrawer = transform.parent.gameObject;
-        boardDrawer.GetComponent<GraphicalBoard>().DrawPieces(board);
-        attackCalculator.UpdateAttacksMap(0);
-        attackCalculator.UpdateAttacksMap(1);
-    }
+    //     boardDrawer = transform.parent.gameObject;
+    //     boardDrawer.GetComponent<GraphicalBoard>().DrawPieces(board);
+    //     attackCalculator.UpdateAttacksMap(0);
+    //     attackCalculator.UpdateAttacksMap(1);
+    // }
 
     public void ParseFEN(string fen)
     {

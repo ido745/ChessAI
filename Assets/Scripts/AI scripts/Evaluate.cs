@@ -1,8 +1,7 @@
+using System;
 using System.IO;
-using UnityEngine;
-using UnityEngine.SocialPlatforms.Impl;
 
-public class Evaluate : MonoBehaviour
+public class Evaluate
 {
     // The values for the pieces
     private const int Pawn = 100;
@@ -273,15 +272,15 @@ public class Evaluate : MonoBehaviour
     {
         int file1 = square1 % 8, rank1 = square1 / 8;
         int file2 = square2 % 8, rank2 = square2 / 8;
-        return Mathf.Abs(file1 - file2) + Mathf.Abs(rank1 - rank2);
+        return Math.Abs(file1 - file2) + Math.Abs(rank1 - rank2);
     }
 
     private int GetDistanceFromCenter(int square)
     {
         int file = square % 8;
         int rank = square / 8;
-        int distanceFromCenterFile = Mathf.Min(Mathf.Abs(file - 4), Mathf.Abs(3 - file));
-        int distanceFromCenterRank = Mathf.Min(Mathf.Abs(rank - 4), Mathf.Abs(3 - rank));
+        int distanceFromCenterFile = Math.Min(Math.Abs(file - 4), Math.Abs(3 - file));
+        int distanceFromCenterRank = Math.Min(Math.Abs(rank - 4), Math.Abs(3 - rank));
         return distanceFromCenterFile + distanceFromCenterRank;
     }
 

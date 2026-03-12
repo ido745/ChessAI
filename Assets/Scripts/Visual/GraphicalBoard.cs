@@ -61,7 +61,8 @@ public class GraphicalBoard : MonoBehaviour
         endgameText = GameOverPanel.GetComponentInChildren<TextMeshProUGUI>();
         DrawBoardUI();
         
-        boardLogic = GetComponentInChildren<BoardLogic>();
+        boardLogic = BoardLogic.Instance;
+        DrawPieces(boardLogic.board);
     }
 
     public void GameStarted()
