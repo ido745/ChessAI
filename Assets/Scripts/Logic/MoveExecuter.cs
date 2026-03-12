@@ -76,6 +76,8 @@ public class MoveExecuter
 
         boardLogic.addMoveToNotation(move);
         boardLogic.positionHistory.Add(boardLogic.zobristKey);
+        // Increment the counter of this position
+        boardLogic.positionCounter[boardLogic.zobristKey] = boardLogic.positionCounter.TryGetValue(boardLogic.zobristKey, out int v) ? v + 1 : 1;
     }
 
     private void UpdateColorOccupancy(int color, int from, int to)
@@ -294,6 +296,7 @@ public class MoveExecuter
     public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare, ulong previousZobristKey)
     {
         boardLogic.positionHistory.RemoveAt(boardLogic.positionHistory.Count - 1);
+        boardLogic.positionCounter[boardLogic.zobristKey] -= 1;
 
         // Xor the blackTurn
         boardLogic.zobristKey = previousZobristKey;

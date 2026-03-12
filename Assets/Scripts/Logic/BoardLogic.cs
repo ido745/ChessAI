@@ -52,7 +52,9 @@ public class BoardLogic : MonoBehaviour
     private Stack<string> openingHistory = new Stack<string>(); // for easy undo
 
     public int halfMoveClock = 0; // Counts moves for 50-move rule
-    public List<ulong> positionHistory = new List<ulong>();
+    public List<ulong> positionHistory = new List<ulong>(); 
+    
+    public Dictionary<ulong, int> positionCounter = new Dictionary<ulong, int>();
 
     public BoardLogic()
     {
@@ -172,6 +174,10 @@ public class BoardLogic : MonoBehaviour
 
         int enPassantFile = (enPassantSquare != 0UL) ? BitScan.TrailingZeroCount(enPassantSquare) % 8 : -1;
         zobristKey = Zobrist.GetZobristKey(board, currentCastling, enPassantFile, turn);
+
+        // Increment the counter of this position
+        positionCounter.Clear();
+        positionCounter[zobristKey] = 1;
     }
 
     public void addMoveToNotation(Move move)

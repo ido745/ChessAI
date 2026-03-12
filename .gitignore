@@ -77,3 +77,14 @@ crashlytics-build.properties
 /ChessAI_BurstDebugInformation_DoNotShip/
 /Windows_builds/
 /webGL_builds/
+
+# Unity crash recovery scenes
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
+
+# Auto-generated VS solution (new format, like .sln)
+*.slnx
+
+# Auto-generated URP volume profile
+/[Aa]ssets/DefaultVolumeProfile.asset
+/[Aa]ssets/DefaultVolumeProfile.asset.meta

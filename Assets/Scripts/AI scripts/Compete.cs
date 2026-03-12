@@ -26,10 +26,10 @@ public class Compete : MonoBehaviour
     private int TotalMovesOld = 0;
     private int TotalMovesNew = 0;
 
-    //void Start()
-    //{
-    //    StartCoroutine(RunCompetition());
-    //}
+    void Start()
+    {
+       StartCoroutine(RunCompetition());
+    }
 
     public void updateInfoToNew(int depth, float nps, float hitRate)
     {

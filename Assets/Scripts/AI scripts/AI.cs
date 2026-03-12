@@ -36,8 +36,6 @@ public class AI : MonoBehaviour
 
     private Move[,] killerMoves = new Move[MAX_PLY, 2]; // Two killer moves per ply
     private int[,] historyTable = new int[64, 64]; // [from][to] square history scores
-
-    // Add these fields at the top of your AI class
     private ulong[][] allocatedPinRays = new ulong[MAX_PLY][];
     private bool[][] allocatedDoubleCheck = new bool[MAX_PLY][];
     private ulong[][] allocatedAttackedSquares = new ulong[MAX_PLY][];
@@ -106,6 +104,8 @@ public class AI : MonoBehaviour
             bookManager = BookManager.Instance;
         if (BoardLogic.Instance != null)
             boardLogic = BoardLogic.Instance;
+
+        boardLogic.positionCounter.Clear();
     }
 
     private bool isThinking = false;
@@ -143,6 +143,7 @@ public class AI : MonoBehaviour
         {
             boardLogic.moveExecuter.MakeMove((Move)bookMove);
             graphicalBoard.MakeVisualMove((Move)bookMove);
+
             isThinking = false;
             yield break;
         }
@@ -423,15 +424,8 @@ public class AI : MonoBehaviour
         if (boardLogic.positionHistory != null && boardLogic.positionHistory.Count > 0)
         {
             ulong currentKey = boardLogic.zobristKey;
-            int count = 0;
-
-            // Count occurrences in history
-            foreach (ulong key in boardLogic.positionHistory)
-            {
-                if (key == currentKey)
-                    count++;
-            }
-
+            int count = boardLogic.positionCounter.TryGetValue(boardLogic.zobristKey, out int v) ? v : 0;
+            
             if (count >= 3)
             {
                 return 50; // draws are not interesting - a bit of penalty.
@@ -516,6 +510,17 @@ public class AI : MonoBehaviour
                     return beta;
                 return nullScore;
             }
+        }
+
+        // Reverse futility pruning
+        if (!inCheck &&
+            depth <= 3 &&
+            beta - alpha <= 1)
+        {
+            int staticEval = GetCachedEvaluation();
+            int margin = 70 * depth;
+            if (staticEval - margin >= beta)
+                return staticEval - margin;
         }
 
         // If previous depths saved a move at this ply - get this move and order it first
