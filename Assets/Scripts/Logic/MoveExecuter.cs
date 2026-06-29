@@ -290,7 +290,8 @@ public class MoveExecuter
     public void UnmakeMove(Move move, int previousCastlingRights, ulong previousEnPassantSquare, ulong previousZobristKey)
     {
         boardLogic.positionHistory.RemoveAt(boardLogic.positionHistory.Count - 1);
-        boardLogic.positionCounter[boardLogic.zobristKey] -= 1;
+        if (boardLogic.positionCounter.TryGetValue(boardLogic.zobristKey, out int posCount))
+            boardLogic.positionCounter[boardLogic.zobristKey] = posCount - 1;
 
         // Xor the blackTurn
         boardLogic.zobristKey = previousZobristKey;

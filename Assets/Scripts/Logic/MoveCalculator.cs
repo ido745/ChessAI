@@ -1,6 +1,6 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
 
 public class MoveCalculator
 {
@@ -91,7 +91,7 @@ public class MoveCalculator
     {
         pieceType = Piece.GetPieceType(pieceType);
         // Castling check
-        if (pieceType == Piece.King && Mathf.Abs(to - from) == 2)
+        if (pieceType == Piece.King && Math.Abs(to - from) == 2)
             return 1; // Castling
 
         if (pieceType == Piece.Pawn)
@@ -107,7 +107,7 @@ public class MoveCalculator
             }
 
             // Double pawn move check
-            if (Mathf.Abs(to - from) == 16)
+            if (Math.Abs(to - from) == 16)
             {
                 return 4; // Double pawn move
             }
@@ -149,7 +149,7 @@ public class MoveCalculator
             }
             catch (System.Exception)
             {
-                Debug.Log($"color: {color}, pieceType: {pieceType}");
+                Console.Error.WriteLine($"color: {color}, pieceType: {pieceType}");
                 throw;
             }
             

@@ -73,6 +73,49 @@ public class BoardLogic
     // Make it a singleton - only one instance of BoardLogic.
     public static BoardLogic Instance { get; private set; }
 
+    // Private constructor used only by Clone() — no FEN, no singleton assignment
+    private BoardLogic(bool _skipInit)
+    {
+        moveExecuter            = new MoveExecuter(this);
+        attackCalculator        = new AttackCalculator(this);
+        moveCalculator          = new MoveCalculator(this);
+        moveToNotationConverter = new MoveToNotationConverter(this);
+        board           = new int[64];
+        bitboards       = new ulong[2, 6];
+        numOfPieces     = new int[2, 6];
+        attackedSquares = new ulong[2];
+        pinRays         = new ulong[64];
+        castled         = new bool[2];
+        doubleCheck     = new bool[2];
+        positionHistory = new List<ulong>();
+        positionCounter = new Dictionary<ulong, int>();
+        openingHistory  = new Stack<string>();
+    }
+
+    public BoardLogic Clone()
+    {
+        var c = new BoardLogic(true);
+        Array.Copy(board,          c.board,          64);
+        Array.Copy(bitboards,      c.bitboards,      bitboards.Length);
+        Array.Copy(numOfPieces,    c.numOfPieces,    numOfPieces.Length);
+        c.Wbitboard       = Wbitboard;
+        c.Bbitboard       = Bbitboard;
+        c.enPassantSquare = enPassantSquare;
+        c.gameEnded       = gameEnded;
+        c.normalStarting  = normalStarting;
+        c.zobristKey      = zobristKey;
+        c.turn            = turn;
+        c.castlingRights  = castlingRights;
+        c.currentCastling = currentCastling;
+        c.halfMoveClock   = halfMoveClock;
+        c.checkMap        = checkMap;
+        Array.Copy(castled,         c.castled,         2);
+        Array.Copy(attackedSquares, c.attackedSquares, 2);
+        Array.Copy(pinRays,         c.pinRays,         64);
+        Array.Copy(doubleCheck,     c.doubleCheck,     2);
+        return c;
+    }
+
     // private void Awake()
     // {
     //     // If there is already an instance and it is not this one, destroy this object

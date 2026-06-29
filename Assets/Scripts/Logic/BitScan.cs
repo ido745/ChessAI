@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 
 public static class BitScan
 {
@@ -49,12 +48,12 @@ public static class BitScan
     public static void PrintBinary(ulong value)
     {
         string bits = Convert.ToString((long)value, 2).PadLeft(64, '0');
-        Debug.Log(bits);
+        Console.Error.WriteLine(bits);
     }
 
     public static bool GetBit(ulong bb, int sq)
     {
-        // Shift the bit at 'sq' to the LSB and mask with 1—returns true if that bit is 1
+        // Shift the bit at 'sq' to the LSB and mask with 1ï¿½returns true if that bit is 1
         return ((bb >> sq) & 1UL) != 0;
     }
 

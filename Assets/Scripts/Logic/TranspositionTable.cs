@@ -1,8 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
-using static AI;
 
 // Transposition table entry structure
 public struct TTEntry
@@ -57,7 +55,7 @@ public class TranspositionTable
         table = new TTEntry[Size];
         sizeMask = Size - 1;
 
-        Debug.Log($"Transposition Table initialized: {Size} entries ({Size * entrySize / (1024 * 1024)} MB)");
+        Console.Error.WriteLine($"Transposition Table initialized: {Size} entries ({Size * entrySize / (1024 * 1024)} MB)");
     }
 
     // Store position in transposition table
@@ -67,11 +65,11 @@ public class TranspositionTable
         ref TTEntry entry = ref table[index];
 
         // Replacement strategy: always replace if empty, or replace if:
-        // 1. Same position (zobrist key match)
+        // 1. Same position (zobrist key match) - removed
         // 2. Higher depth
         // 3. Newer age and similar depth
         bool shouldReplace = entry.IsEmpty ||
-                           entry.zobristKey == zobristKey ||
+                           //entry.zobristKey == zobristKey ||
                            depth >= entry.depth ||
                            (currentAge != entry.age && depth >= entry.depth - 2);
 

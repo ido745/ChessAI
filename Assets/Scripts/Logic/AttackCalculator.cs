@@ -1,5 +1,3 @@
-using System.Drawing;
-using UnityEngine;
 using static BitScan;
 
 public class AttackCalculator

@@ -2,7 +2,6 @@ using System.Diagnostics;
 using static BitScan;
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 
 public static class MagicHelper
 {

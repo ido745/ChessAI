@@ -38,7 +38,14 @@ public class Evaluate
 
         score += EvaluateBishopPair(us) - EvaluateBishopPair(them);
 
-        return score;
+        int gamePhase = GetGamePhase();
+
+        if (gamePhase > 50) // Opening
+            return (int)((float)score * 1.186f);
+        else if (gamePhase > 20) // Middle game
+            return (int)((float)score * 0.966f);
+        else // End game
+            return (int)((float)score * 0.81f);
     }
 
     private int CountMaterial(int color)
@@ -350,7 +357,7 @@ public class Evaluate
         ulong pawnBitboard = boardLogic.bitboards[color, Piece.Pawn - 1];
         ulong originalBitboard = pawnBitboard;
         ulong enemyBitboard = (color == 0) ? boardLogic.Bbitboard : boardLogic.Wbitboard;
-
+        
         while (pawnBitboard != 0UL)
         {
             int pos = BitScan.TrailingZeroCount(pawnBitboard);
@@ -373,7 +380,15 @@ public class Evaluate
                 passedMask = (fileMask[file] | checkIsolated[file]) & (0xFFFFFFFFFFFFFFFFUL >> (64 - pos));
 
             if ((enemyBitboard & passedMask) == 0UL)
-                score += 30 + (rank * 10);
+            {
+                int advancedRank = color == 0 ? rank : 7 - rank;
+                score += 30 + (advancedRank * 10);
+            } else if ((boardLogic.bitboards[1 - color, Piece.Pawn - 1] & passedMask) == 0UL)
+            {
+                int advancedRank = color == 0 ? rank : 7 - rank;
+                score += 10 + (advancedRank * 10);
+            }
+            
 
             // Check for pawn chains
             ulong connectedSquare = Magic.GetPawnCapturesOnly(pos, color);
@@ -385,7 +400,141 @@ public class Evaluate
         return score;
     }
 
+    private static readonly int[] kingSafetyTable =
+    { 0, 5, 20, 50, 90, 130, 170, 200, 220, 240, 255 };
+
     private int EvaluateKingSafety(int color)
+    {
+        int gamePhase = GetGamePhase();
+        if (gamePhase < 10) return 0; // pure endgame — king should be active
+
+        // All penalties scale from 0 at gamePhase=10 to full at gamePhase=30+
+        float phaseScale = Math.Min(gamePhase, 30) / 30f;
+
+        int score = 0;
+        int enemy = 1 - color;
+        int kingPos = BitScan.TrailingZeroCount(boardLogic.bitboards[color, Piece.King - 1]);
+        ulong kingZone = Magic.GetKingAttacks(kingPos);
+        int kingFile = kingPos % 8;
+        int kingRank = kingPos / 8;
+        ulong allPieces = boardLogic.Wbitboard | boardLogic.Bbitboard;
+
+        // --- Pawn shield (rank-based, phase-scaled) ---
+        // Pawns 1 rank in front of king are ideal shields (+20), 2 ranks ahead are weaker (+10)
+        for (int f = Math.Max(0, kingFile - 1); f <= Math.Min(7, kingFile + 1); f++)
+        {
+            ulong ownFilePawns = boardLogic.bitboards[color, Piece.Pawn - 1] & fileMask[f];
+            for (int dist = 1; dist <= 2; dist++)
+            {
+                int checkRank = color == 0 ? kingRank + dist : kingRank - dist;
+                if (checkRank < 0 || checkRank > 7) break;
+                if ((ownFilePawns & (0xFFUL << (checkRank * 8))) != 0)
+                {
+                    score += (int)((dist == 1 ? 20 : 10) * phaseScale);
+                    break; // only count closest pawn per file
+                }
+            }
+        }
+
+        // --- Open/semi-open files near king (phase-scaled) ---
+        for (int f = Math.Max(0, kingFile - 1); f <= Math.Min(7, kingFile + 1); f++)
+        {
+            bool ownPawn   = (boardLogic.bitboards[color, Piece.Pawn - 1]  & fileMask[f]) != 0;
+            bool enemyPawn = (boardLogic.bitboards[enemy, Piece.Pawn - 1] & fileMask[f]) != 0;
+            if (!ownPawn && !enemyPawn) score -= (int)(25 * phaseScale); // open file
+            else if (!ownPawn)          score -= (int)(15 * phaseScale); // semi-open file
+        }
+
+        // --- Pawn storm: enemy pawns advancing toward our king (phase-scaled) ---
+        for (int f = Math.Max(0, kingFile - 1); f <= Math.Min(7, kingFile + 1); f++)
+        {
+            ulong enemyFilePawns = boardLogic.bitboards[enemy, Piece.Pawn - 1] & fileMask[f];
+            if (enemyFilePawns == 0) continue;
+
+            bool ownPawnOnFile = (boardLogic.bitboards[color, Piece.Pawn - 1] & fileMask[f]) != 0;
+
+            // Find the most advanced enemy pawn toward our king
+            int dist;
+            if (color == 0) // white king: black pawns advance toward lower ranks
+            {
+                int pawnRank = BitScan.TrailingZeroCount(enemyFilePawns) / 8;
+                dist = pawnRank - kingRank;
+            }
+            else // black king: white pawns advance toward higher ranks
+            {
+                ulong temp = enemyFilePawns;
+                int pawnPos = 0;
+                while (temp != 0) { pawnPos = BitScan.TrailingZeroCount(temp); temp &= temp - 1; }
+                dist = kingRank - (pawnPos / 8);
+            }
+
+            if (dist > 0 && dist <= 3)
+            {
+                int stormPenalty = dist == 1 ? 20 : dist == 2 ? 10 : 5;
+                if (!ownPawnOnFile) stormPenalty += 8; // no blocker makes it more dangerous
+                score -= (int)(stormPenalty * phaseScale);
+            }
+        }
+
+        // --- Enemy piece attack weight ---
+        int attackWeight = 0;
+
+        ulong b = boardLogic.bitboards[enemy, Piece.Knight - 1];
+        while (b != 0)
+        {
+            int sq = BitScan.TrailingZeroCount(b);
+            if ((Magic.GetKnightAttacks(sq) & kingZone) != 0)
+                attackWeight += 2;
+            b &= b - 1;
+        }
+        b = boardLogic.bitboards[enemy, Piece.Bishop - 1];
+        while (b != 0)
+        {
+            int sq = BitScan.TrailingZeroCount(b);
+            if ((Magic.GetBishopAttacks(sq, allPieces) & kingZone) != 0)
+                attackWeight += 2;
+            b &= b - 1;
+        }
+        b = boardLogic.bitboards[enemy, Piece.Rook - 1];
+        while (b != 0)
+        {
+            int sq = BitScan.TrailingZeroCount(b);
+            if ((Magic.GetRookAttacks(sq, allPieces) & kingZone) != 0)
+                attackWeight += 3;
+            b &= b - 1;
+        }
+        b = boardLogic.bitboards[enemy, Piece.Queen - 1];
+        while (b != 0)
+        {
+            int sq = BitScan.TrailingZeroCount(b);
+            if (((Magic.GetBishopAttacks(sq, allPieces) | Magic.GetRookAttacks(sq, allPieces)) & kingZone) != 0)
+                attackWeight += 5;
+            b &= b - 1;
+        }
+
+        // Without the enemy queen, king attacks are far less dangerous
+        if (boardLogic.bitboards[enemy, Piece.Queen - 1] == 0)
+            attackWeight /= 2;
+
+        // --- King escape squares (only relevant under active pressure) ---
+        if (attackWeight >= 3)
+        {
+            ulong ownPieces = color == 0 ? boardLogic.Wbitboard : boardLogic.Bbitboard;
+            int escapeSquares = BitScan.PopCount(kingZone & ~boardLogic.attackedSquares[enemy] & ~ownPieces);
+            if (escapeSquares == 0) score -= 40;
+            else if (escapeSquares == 1) score -= 15;
+        }
+
+        // --- Apply attack penalty (non-linear, phase-scaled) ---
+        int idx = Math.Min(attackWeight, kingSafetyTable.Length - 1);
+        score -= (int)(kingSafetyTable[idx] * phaseScale);
+
+        return score;
+    }
+
+
+    
+    /*private int EvaluateKingSafety(int color)
     {
         int score = 0;
         int kingPos = BitScan.TrailingZeroCount(boardLogic.bitboards[color, Piece.King - 1]);
@@ -402,15 +551,104 @@ public class Evaluate
         score -= 5 * BitScan.PopCount(boardLogic.attackedSquares[1 - color] & aroundKingMask);
 
         return score;
-    }
+    }*/
+
+    /*
+    private int EvaluateKingSafety(int color)
+    {
+        int gamePhase = GetGamePhase();
+        float phaseScale = Math.Min(gamePhase, 30) / 30f;
+
+        int score = 0;
+        int kingPos = BitScan.TrailingZeroCount(boardLogic.bitboards[color, Piece.King - 1]);
+        ulong aroundKingMask = Magic.GetKingAttacks(kingPos);
+        ulong friends = (color == 0) ? boardLogic.Wbitboard : boardLogic.Bbitboard;
+
+        score += 8 * BitScan.PopCount(boardLogic.bitboards[color, Piece.Pawn - 1] & aroundKingMask);
+        score += 5 * BitScan.PopCount((friends ^ boardLogic.bitboards[color, Piece.Pawn - 1]) & aroundKingMask);
+        score -= 5 * BitScan.PopCount(boardLogic.attackedSquares[1 - color] & aroundKingMask);
+
+        int kingFile = kingPos % 8;
+        int kingRank = kingPos / 8;
+        
+        // Tiny bonuses for pawn shields. +3 per pawn instead of +20.
+        for (int f = Math.Max(0, kingFile - 1); f <= Math.Min(7, kingFile + 1); f++)
+        {
+            ulong ownFilePawns = boardLogic.bitboards[color, Piece.Pawn - 1] & fileMask[f];
+            for (int dist = 1; dist <= 2; dist++)
+            {
+                int checkRank = color == 0 ? kingRank + dist : kingRank - dist;
+                if (checkRank >= 0 && checkRank <= 7)
+                {
+                    if ((ownFilePawns & (1UL << (checkRank * 8 + f))) != 0)
+                    {
+                        score += (dist == 1) ? 3 : 1; 
+                        break;
+                    }
+                }
+            }
+        }
+
+        // --- Open/semi-open files near king (phase-scaled) ---
+        for (int f = Math.Max(0, kingFile - 1); f <= Math.Min(7, kingFile + 1); f++)
+        {
+            bool ownPawn   = (boardLogic.bitboards[color, Piece.Pawn - 1]  & fileMask[f]) != 0;
+            bool enemyPawn = (boardLogic.bitboards[1 - color, Piece.Pawn - 1] & fileMask[f]) != 0;
+            if (!ownPawn && !enemyPawn) score -= (int)(10 * phaseScale); // open file
+            else if (!ownPawn)          score -= (int)(5 * phaseScale); // semi-open file
+        }
+
+        return score;
+    }*/
 
     private int EvaluateMobility(int color)
     {
-        int mobility = BitScan.PopCount(boardLogic.attackedSquares[color]);
+        int gamePhase = GetGamePhase();
+
+        if (gamePhase < 50)
+            return EvaluateMobilityMiddleEnd(color);
+        else
+            return EvaluateMobilityOpening(color);
+    }
+
+    private int EvaluateMobilityOpening(int color)
+    {
+        int score = 0;
+        ulong ownPieces  = color == 0 ? boardLogic.Wbitboard : boardLogic.Bbitboard;
+        ulong allPieces  = boardLogic.Wbitboard | boardLogic.Bbitboard;
+
+        ulong b = boardLogic.bitboards[color, Piece.Knight - 1];
+        while (b != 0) { int sq = BitScan.TrailingZeroCount(b);
+            score += BitScan.PopCount(Magic.GetKnightAttacks(sq) & ~ownPieces) * 4;
+            b &= b - 1; }
+
+        b = boardLogic.bitboards[color, Piece.Bishop - 1];
+        while (b != 0) { int sq = BitScan.TrailingZeroCount(b);
+            score += BitScan.PopCount(Magic.GetBishopAttacks(sq, allPieces) & ~ownPieces) * 3;
+            b &= b - 1; }
+
+        b = boardLogic.bitboards[color, Piece.Rook - 1];
+        while (b != 0) { int sq = BitScan.TrailingZeroCount(b);
+            score += BitScan.PopCount(Magic.GetRookAttacks(sq, allPieces) & ~ownPieces) * 2;
+            b &= b - 1; }
+
+        b = boardLogic.bitboards[color, Piece.Queen - 1];
+        while (b != 0) { int sq = BitScan.TrailingZeroCount(b);
+            score += BitScan.PopCount((Magic.GetBishopAttacks(sq, allPieces) | Magic.GetRookAttacks(sq, allPieces)) & ~ownPieces) * 1;
+            b &= b - 1; }
+
+        return score;
+    }
+
+
+    private int EvaluateMobilityMiddleEnd(int color)
+    {
+        ulong ownPieces = (color == 0) ? boardLogic.Wbitboard : boardLogic.Bbitboard;
+        int mobility = BitScan.PopCount(boardLogic.attackedSquares[color] & ~ownPieces);
 
         // Weight mobility more in the middlegame
         int gamePhase = GetGamePhase();
-        int mobilityWeight = gamePhase > 15 ? 2 : 1;
+        int mobilityWeight = gamePhase > 15 ? 2 : 2;
 
         return mobility * mobilityWeight;
     }

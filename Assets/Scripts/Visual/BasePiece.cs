@@ -81,7 +81,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         int type = pieceType;
         // Only move if this is our turn
         isMoving = (type >> 4) == boardManager.turn;
-        if (!boardDrawer.gameStarted || boardDrawer.playingAI && (boardManager.turn != boardDrawer.playingColor) || boardManager.gameEnded)
+        if (!boardDrawer.gameStarted || boardDrawer.playingAI && (boardManager.turn != boardDrawer.playingColor || AI.isThinking) || boardManager.gameEnded)
             isMoving = false;   // if we play ai, we don't want to allow to drag the pieces.
 
         if (!isMoving)
@@ -139,7 +139,7 @@ public class BasePiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                     // Invalid move.
                     break;
                 }
-                print($"valid move. going to: {newIndex}");
+                //print($"valid move. going to: {newIndex}");
                 int flag = boardManager.moveCalculator.FindFlag(pieceType, index, newIndex);
 
                 // If the move is promotion, we would also like to update the new piece type

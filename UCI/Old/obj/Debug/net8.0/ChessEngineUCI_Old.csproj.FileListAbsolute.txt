@@ -1,0 +1,15 @@
+C:\Users\yairm\ChessAI\UCI\Old\bin\Debug\net8.0\ChessEngineUCI_Old.exe
+C:\Users\yairm\ChessAI\UCI\Old\bin\Debug\net8.0\ChessEngineUCI_Old.deps.json
+C:\Users\yairm\ChessAI\UCI\Old\bin\Debug\net8.0\ChessEngineUCI_Old.runtimeconfig.json
+C:\Users\yairm\ChessAI\UCI\Old\bin\Debug\net8.0\ChessEngineUCI_Old.dll
+C:\Users\yairm\ChessAI\UCI\Old\bin\Debug\net8.0\ChessEngineUCI_Old.pdb
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\ChessEngineUCI_Old.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\ChessEngineUCI_Old.AssemblyInfoInputs.cache
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\ChessEngineUCI_Old.AssemblyInfo.cs
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\ChessEngineUCI_Old.csproj.CoreCompileInputs.cache
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\ChessEngineUCI_Old.sourcelink.json
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\ChessEngineUCI_Old.dll
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\refint\ChessEngineUCI_Old.dll
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\ChessEngineUCI_Old.pdb
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\ChessEngineUCI_Old.genruntimeconfig.cache
+C:\Users\yairm\ChessAI\UCI\Old\obj\Debug\net8.0\ref\ChessEngineUCI_Old.dll

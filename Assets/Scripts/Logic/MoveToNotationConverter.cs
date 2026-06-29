@@ -1,6 +1,6 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
 
 public class MoveToNotationConverter
 {
@@ -81,7 +81,7 @@ public class MoveToNotationConverter
         // Handle castling
         if (Piece.GetPieceType(piece) == Piece.King)
         {
-            if (Mathf.Abs(to - from) == 2)
+            if (Math.Abs(to - from) == 2)
             {
                 return to > from ? "O-O" : "O-O-O";
             }
@@ -108,8 +108,9 @@ public class MoveToNotationConverter
             pieceLetter = ((char)('a' + (from % 8))).ToString();
         }
 
-        // Disambiguation: check if other pieces of same type can move to 'to'
-        if (pieceLetter != "" && captureSymbol != "")
+        // Disambiguation: for non-pawn pieces only (pawns already carry their file letter).
+        // Must run for captures AND quiet moves (e.g. "Rfe1" is a quiet move needing disambiguation).
+        if (Piece.GetPieceType(piece) != Piece.Pawn && pieceLetter != "")
         {
             string disambiguation = "";
             Move[] moves = new Move[256];

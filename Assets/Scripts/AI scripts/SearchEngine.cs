@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 
 public class SearchEngine
 {
@@ -31,10 +32,18 @@ public class SearchEngine
     private Dictionary<ulong, int> evalCache = new Dictionary<ulong, int>(); // Cached evaluations for positions
 
     private Stopwatch searchStopwatch;
-    private int searchTimeLimitMs;
-    private bool aborted;
+    private volatile int searchTimeLimitMs;
+    private volatile bool aborted;
     private int seldepth = 0;
     private int currentSearchDepth = 0;
+
+    private Thread searchThread;
+    private Move lastBestMove;
+    private volatile bool isPondering;
+    private volatile bool externalAbort;
+    public Move PonderMove { get; private set; }
+    public Action<Move> OnSearchComplete { get; set; }
+    public bool IsSearchRunning => searchThread != null && searchThread.IsAlive;
 
     private int bestScoreForDebug;
 
@@ -61,6 +70,15 @@ public class SearchEngine
     public int LastDepthReached { get; private set; }
     public float LastNps { get; private set; }
     public float LastTtHitRate { get; private set; }
+    public int LastBestScore { get; private set; }
+
+    // Moves to skip at the root — used by analysis tool to find 2nd/3rd best moves
+    private readonly HashSet<(int from, int to)> _rootExclusions = new();
+    public void ExcludeRootMove(int from, int to) => _rootExclusions.Add((from, to));
+    public void ClearRootExclusions() => _rootExclusions.Clear();
+
+    // Called after each depth with a UCI info string
+    public Action<string> InfoCallback { get; set; }
 
 
     private void InitializeMoveStatePool()
@@ -115,29 +133,98 @@ public class SearchEngine
 
     public Move GetBestMove(BoardLogic board)
     {
+        // Infinite join on the task thread (not the main thread) — no zombie thread risk.
+        // StopSearch's 2000ms join can time out leaving a zombie that resets aborted=false,
+        // causing both threads to corrupt positionCounter concurrently.
+        if (searchThread != null && searchThread.IsAlive)
+        {
+            externalAbort = true;
+            aborted = true;
+            searchThread.Join();
+            searchThread = null;
+        }
         this.boardLogic = board;
         evalCache.Clear();
         aiColor = boardLogic.turn;
         tt.NextAge();
         Array.Clear(historyTable, 0, historyTable.Length);
+        isPondering = false;
+        RunSearch();
+        return lastBestMove;
+    }
 
-        return SearchOnBackgroundThread();
+    public Move GetBestMove(BoardLogic board, int timeLimitMs)
+    {
+        this.TIME_LIMIT = timeLimitMs;
+        return GetBestMove(board);
+    }
+
+    // ── Async / Pondering API ────────────────────────────────────────────────
+
+    public void StartSearch(BoardLogic board, int timeLimitMs)
+    {
+        StopSearch();
+        this.boardLogic = board;
+        this.TIME_LIMIT = timeLimitMs;
+        evalCache.Clear();
+        aiColor = boardLogic.turn;
+        tt.NextAge();
+        Array.Clear(historyTable, 0, historyTable.Length);
+        isPondering = false;
+        searchThread = new Thread(RunSearch) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
+        searchThread.Start();
+    }
+
+    public void StartPondering(BoardLogic board)
+    {
+        StopSearch();
+        this.boardLogic = board;
+        // Do NOT set TIME_LIMIT here — it would corrupt the game search time limit.
+        evalCache.Clear();
+        aiColor = boardLogic.turn;
+        isPondering = true;
+        searchThread = new Thread(RunSearch) { IsBackground = true, Priority = ThreadPriority.BelowNormal };
+        searchThread.Start();
+    }
+
+    public void PonderHit(int timeLimitMs)
+    {
+        isPondering = false;
+        searchTimeLimitMs = timeLimitMs;
+        searchStopwatch.Restart();
+    }
+
+    public Move StopSearch()
+    {
+        if (searchThread == null || !searchThread.IsAlive) return lastBestMove;
+        externalAbort = true;
+        aborted = true;
+        searchThread.Join(2000);
+        searchThread = null;
+        return lastBestMove;
+    }
+
+    public Move WaitForSearch()
+    {
+        searchThread?.Join();
+        searchThread = null;
+        return lastBestMove;
     }
 
 
-    private Move SearchOnBackgroundThread()
+    private void RunSearch()
     {
         nodesSearched = 0;
         ttProbes = 0;
         seldepth = 0;
-        tt.Clear();
 
         searchStopwatch = new Stopwatch();
-        searchTimeLimitMs = TIME_LIMIT;
+        searchTimeLimitMs = isPondering ? int.MaxValue / 2 : TIME_LIMIT;
         aborted = false;
+        externalAbort = false;
         searchStopwatch.Start();
 
-        Move lastBestMove = new Move();
+        lastBestMove = new Move();
 
         int scoreForDebug = evaluator.GetScore(boardLogic);
         //print($"STATIC EVAL: {scoreForDebug}");
@@ -164,8 +251,7 @@ public class SearchEngine
             else
             {
                 // Search with full window
-                candidate = Search(depth, -INFINITY, INFINITY);
-                score = bestScoreForDebug;
+                (candidate, score) = Search(depth, -INFINITY, INFINITY);
             }
 
             if (aborted || !IsValidMove(candidate))
@@ -174,6 +260,18 @@ public class SearchEngine
             // Update the best move and score
             lastBestMove = candidate;
             previousScore = score;
+            LastBestScore = score;
+
+            // Output UCI info line
+            if (InfoCallback != null)
+            {
+                long infoTimeMs = searchStopwatch.ElapsedMilliseconds;
+                long infoNps = infoTimeMs > 0 ? (long)(nodesSearched * 1000.0 / infoTimeMs) : 0;
+                string scoreStr = score > MATE_SCORE - MAX_PLY  ? $"mate {(MATE_SCORE - score + 1) / 2}"
+                                : score < -(MATE_SCORE - MAX_PLY) ? $"mate {-(MATE_SCORE + score) / 2}"
+                                : $"cp {score}";
+                InfoCallback($"info depth {depth} seldepth {seldepth} score {scoreStr} nodes {nodesSearched} time {infoTimeMs} nps {infoNps}");
+            }
 
             // Save the pvTable for this depth - used for move ordering in next depths.
             Array.Copy(pvTable, savedPVTable, pvTable.Length);
@@ -189,7 +287,31 @@ public class SearchEngine
         LastTtHitRate = ttHitRate;
 
         searchStopwatch.Stop();
-        return lastBestMove;
+
+        // Validate ponder move: make our best move, confirm the PV reply is legal, then restore
+        PonderMove = new Move();
+        if (savedPVLength[0] >= 2 && IsValidMove(lastBestMove))
+        {
+            Move candidate = savedPVTable[0, 1];
+            if (IsValidMove(candidate))
+            {
+                MoveState st = SaveMoveState(0);
+                boardLogic.moveExecuter.MakeMove(lastBestMove);
+                int cnt = boardLogic.moveCalculator.GenerateAllMoves(moveList[1], boardLogic.turn);
+                for (int i = 0; i < cnt; i++)
+                {
+                    if (moveList[1][i].from == candidate.from && moveList[1][i].to == candidate.to)
+                    {
+                        PonderMove = candidate;
+                        break;
+                    }
+                }
+                RestoreMoveState(lastBestMove, st);
+            }
+        }
+
+        if (!isPondering && !externalAbort)
+            OnSearchComplete?.Invoke(lastBestMove);
     }
 
     private (Move bestMove, int score) SearchWithAspirationWindows(int depth, int previousScore)
@@ -204,8 +326,9 @@ public class SearchEngine
 
         while (true)
         {
-            Move candidate = Search(depth, alpha, beta);
-            int score = bestScoreForDebug;
+            // Use the score returned directly by Search (not the accumulated bestScoreForDebug)
+            // so that a stale depth-N best score cannot make a depth-N+1 inferior move pass the window check
+            (Move candidate, int score) = Search(depth, alpha, beta);
 
             if (aborted)
             {
@@ -254,9 +377,9 @@ public class SearchEngine
         }
     }
 
-    private Move Search(int depth, int alpha, int beta)
+    private (Move bestMove, int bestScore) Search(int depth, int alpha, int beta)
     {
-        if (aborted) return new Move();
+        if (aborted) return (new Move(), -INFINITY);
 
         Move[] moves = moveList[0];
         int movesCount = boardLogic.moveCalculator.GenerateAllMoves(moves, boardLogic.turn);
@@ -271,10 +394,10 @@ public class SearchEngine
             // {
             //     print("StaleMate!");
             // }
-            return new Move(); // Stalemate or checkmate
+            return (new Move(), 0); // Stalemate or checkmate
         }
         if (movesCount == 1)
-            return moves[0];
+            return (moves[0], 0);
 
         Move ttMove = tt.GetBestMove(boardLogic.zobristKey);
         Move pvMove = (savedPVLength[0] > 0) ? savedPVTable[0, 0] : new Move();
@@ -289,6 +412,7 @@ public class SearchEngine
         for (int i = 0; i < movesCount; i++)
         {
             Move move = moves[i];
+            if (_rootExclusions.Count > 0 && _rootExclusions.Contains((move.from, move.to))) continue;
             MoveState state = SaveMoveState(0);
             boardLogic.moveExecuter.MakeMove(move);
             nodesSearched++;
@@ -345,7 +469,7 @@ public class SearchEngine
         // Store in TT
         tt.Store(boardLogic.zobristKey, (short)bestScore, (byte)depth, entryType, bestMove);
 
-        return bestMove;
+        return (bestMove, bestScore);
     }
 
 
@@ -783,9 +907,15 @@ public class SearchEngine
             {
                 score = 20_000_000; // 1. PV move is highest priority
             }
+            else if (ply == 0 && m.capturedPiece != 0 && StaticExchangeEvaluation(m) >= 0)
+            {
+                // 2. At root: winning/even captures before TT move — prevents stale TT from
+                //    burying a free-piece capture under a poor TT move during aspiration search.
+                score = 19_500_000 + GetCaptureScore(m);
+            }
             else if (MovesEqual(m, ttMove))
             {
-                score = 19_000_000; // 2. TT move is next
+                score = 19_000_000; // 3. TT move
             }
             else if (m.capturedPiece != 0)
             {
