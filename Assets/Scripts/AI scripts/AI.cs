@@ -14,7 +14,7 @@ public class AI : MonoBehaviour
 
     private void Awake()
     {
-        if (BoardLogic.Instance == null) new BoardLogic();
+        new BoardLogic();
     }
 
     private void Start()

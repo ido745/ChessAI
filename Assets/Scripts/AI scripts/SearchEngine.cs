@@ -278,7 +278,7 @@ public class SearchEngine
             Array.Copy(pvLength, savedPVLength, pvLength.Length);
         }
 
-        float nps = nodesSearched / (TIME_LIMIT / 1000f);
+        float nps = nodesSearched / Math.Max(searchStopwatch.ElapsedMilliseconds / 1000f, 0.001f);
         float ttHitRate = (ttProbes > 0) ? (tt.Hits * 100f / ttProbes) : 0;
 
         // Update public debugging information
@@ -544,8 +544,10 @@ public class SearchEngine
 
         // Null move pruning
         bool inCheck = boardLogic.IsInCheck();
-        ulong fiendlyBitboard = (boardLogic.turn == 0) ? boardLogic.Wbitboard : boardLogic.Bbitboard;
-        bool hasNonPawnMaterial = ((fiendlyBitboard & ~boardLogic.bitboards[boardLogic.turn, Piece.Pawn - 1]) != 0UL);
+        ulong friendlyBitboard = (boardLogic.turn == 0) ? boardLogic.Wbitboard : boardLogic.Bbitboard;
+        bool hasNonPawnMaterial = (friendlyBitboard
+            & ~boardLogic.bitboards[boardLogic.turn, Piece.Pawn - 1]
+            & ~boardLogic.bitboards[boardLogic.turn, Piece.King - 1]) != 0UL;
 
         if (allowNullMove &&
             !inCheck &&
